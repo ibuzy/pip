@@ -1,0 +1,1193 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Пип — симулятор</title>
+<!-- a gear: the simulator is a tool, not Pip (the panel has his face) -->
+<link rel="icon" type="image/svg+xml" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="%2316161a"/><g fill="%23ff6a2b"><rect x="28" y="7" width="8" height="12" rx="1.5" transform="rotate%280 32 32%29"/><rect x="28" y="7" width="8" height="12" rx="1.5" transform="rotate%2845 32 32%29"/><rect x="28" y="7" width="8" height="12" rx="1.5" transform="rotate%2890 32 32%29"/><rect x="28" y="7" width="8" height="12" rx="1.5" transform="rotate%28135 32 32%29"/><rect x="28" y="7" width="8" height="12" rx="1.5" transform="rotate%28180 32 32%29"/><rect x="28" y="7" width="8" height="12" rx="1.5" transform="rotate%28225 32 32%29"/><rect x="28" y="7" width="8" height="12" rx="1.5" transform="rotate%28270 32 32%29"/><rect x="28" y="7" width="8" height="12" rx="1.5" transform="rotate%28315 32 32%29"/><circle cx="32" cy="32" r="17"/></g><circle cx="32" cy="32" r="7" fill="%2316161a"/></svg>'>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  /* the same world as the control panel (docs/index.html): AMOLED black, the Стандартная orange, Manrope and
+     JetBrains Mono, cards with soft corners; the keychain in 3D on the left, everything you can do to it on the right */
+  :root {
+    --bg: #060607; --bg2: #0d0d10; --card: #131317; --card2: #1a1a1f; --line: #25252c; --line2: #34343d;
+    --text: #f3f1ec; --dim: #9a978f; --faint: #6b6962;
+    --acc: #ff6a2b; --acc2: #ff9a3d; --accbg: rgba(255,106,43,.12); --good: #30d158; --bad: #ff453a;
+    --r: 18px; --r2: 12px;
+    --sans: "Manrope", -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, "SF Mono", Consolas, monospace;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; height: 100vh; display: flex; overflow: hidden; color: var(--text); font: 13px/1.45 var(--sans);
+         -webkit-font-smoothing: antialiased; background: var(--bg);
+         background-image: radial-gradient(900px 500px at 30% -10%, rgba(255,106,43,.08), transparent 60%); }
+  /* the backdrop: the 3D scene is transparent over it - a soft pool of light behind the keychain, the accent's faint
+     warmth from above, and a dot grid (the Ретро theme's) fading out towards the edges; quiet enough not to compete */
+  #view { flex: 1; position: relative; min-width: 0; isolation: isolate;
+          background: radial-gradient(55% 50% at 50% 46%, rgba(255,255,255,.045), transparent 72%),
+                      radial-gradient(70% 45% at 40% -8%, rgba(255,106,43,.07), transparent 70%),
+                      linear-gradient(180deg, #0f0f12, #09090b); }
+  #view::before { content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 0;
+                  background-image: radial-gradient(rgba(255,255,255,.07) 1px, transparent 1.3px); background-size: 22px 22px;
+                  -webkit-mask-image: radial-gradient(65% 60% at 50% 46%, #000 15%, transparent 78%);
+                          mask-image: radial-gradient(65% 60% at 50% 46%, #000 15%, transparent 78%); }
+  #view canvas { position: relative; z-index: 1; display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+  #view canvas.screen { cursor: pointer; }
+  #brand { position: absolute; z-index: 2; left: 20px; top: 18px; display: flex; align-items: center; gap: 12px; pointer-events: none; }
+  .logo { width: 38px; height: 38px; border-radius: 12px; background: #000; border: 1px solid var(--line2); display: flex; align-items: center; justify-content: center; gap: 5px; }
+  .logo i { width: 8px; height: 13px; border-radius: 4px; background: #fff; }
+  #brand b { font: 800 19px/1 var(--sans); letter-spacing: -.3px; display: block; }
+  #brand small { font-size: 12px; color: var(--dim); font-weight: 500; }
+  #hint { position: absolute; z-index: 2; left: 20px; right: 20px; bottom: 16px; color: var(--faint); font-size: 12px; pointer-events: none; max-width: 760px; }
+  #hint b { color: var(--dim); font-weight: 600; }
+  /* the charge, fixed at the top of the view over the keychain (not on the model: it stays put as it turns or zooms) */
+  #batTag { position: absolute; left: 50%; top: 18px; transform: translateX(-50%); pointer-events: none; white-space: nowrap; z-index: 2;
+            font: 600 13px var(--mono); color: var(--text); background: var(--card2); border: 1px solid var(--line2);
+            border-radius: 999px; padding: 3px 10px; }
+  #batTag.charging { color: var(--good); border-color: currentColor; }
+  #batTag.low { color: var(--bad); border-color: currentColor; }
+  #panel { width: 420px; flex: none; background: var(--bg2); border-left: 1px solid var(--line); overflow-y: auto; padding: 16px 16px 28px;
+           display: flex; flex-direction: column; gap: 12px; }
+  #panel::-webkit-scrollbar { width: 8px; } #panel::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 4px; }
+  @media (max-width: 900px) {
+    body { flex-direction: column; height: auto; min-height: 100vh; overflow: auto; }
+    #view { flex: none; height: min(70vh, 100vw); min-height: 300px; }
+    #hint, #brand { display: none; }
+    #panel { width: auto; border-left: 0; border-top: 1px solid var(--line); overflow: visible; }
+    #pad { width: 150px; height: 150px; }
+  }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .card > h2 { font: 700 14px/1.2 var(--sans); margin: 0; display: flex; align-items: center; gap: 10px; }
+  .card > h2 i { width: 8px; height: 8px; border-radius: 3px; background: var(--acc); flex: none; }
+  /* every titled card folds by its title (as "Меню брелока" on the panel); all open at first */
+  .card > h2 { cursor: pointer; user-select: none; border-radius: 8px; }
+  .card > h2 .chev { margin-left: auto; width: 18px; height: 18px; flex: none; color: var(--faint); transform: rotate(180deg); transition: transform .2s, color .15s; }
+  .card > h2:hover .chev { color: var(--dim); }
+  .card.folded { gap: 0; }
+  .card.folded > :not(h2) { display: none !important; }
+  .card.folded > h2 .chev { transform: none; }
+  .row { display: flex; gap: 14px; align-items: center; }
+  .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  @media (max-width: 440px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } } /* a phone: no word broken in a third of the width */
+  .swatch { display: inline-block; flex: none; width: 16px; height: 16px; border-radius: 50%; margin-right: 7px; vertical-align: -3px; box-shadow: 0 0 0 1px rgba(255,255,255,.15); }
+  button { font: 600 12.5px/1.2 var(--sans); background: var(--card2); color: var(--text); border: 1px solid var(--line2); border-radius: var(--r2);
+           padding: 8px 6px; min-height: 36px; cursor: pointer; transition: background .15s, border-color .15s, transform .1s; }
+  button:hover { border-color: var(--faint); }
+  button:active { transform: scale(.98); }
+  button.on { background: var(--accbg); border-color: var(--acc); color: var(--acc2); }
+  button.cur { border-color: var(--acc); }
+  button.main { background: linear-gradient(180deg, var(--acc2), var(--acc)); border-color: transparent; color: #140800; }
+  :focus-visible { outline: 2px solid var(--acc2); outline-offset: 2px; }
+  #mood { font: 800 22px/1.15 var(--sans); letter-spacing: -.3px; }
+  #reaction { color: var(--acc2); min-height: 18px; font-weight: 600; }
+  #preview { width: 120px; height: 120px; border-radius: 50%; background: #000; flex: none;
+             box-shadow: 0 0 0 5px #1b1b20, 0 0 0 6px var(--line2), 0 20px 40px -20px #000; }
+  .mono { font: 500 11.5px/1.55 var(--mono); background: var(--bg2); border: 1px solid var(--line); border-radius: var(--r2);
+          padding: 9px 11px; white-space: pre; color: #cfccc4; overflow-x: auto; }
+  #pad { width: 170px; height: 170px; border-radius: 50%; flex: none; position: relative; touch-action: none; cursor: crosshair;
+         background: radial-gradient(circle, #1f1f25 0 30%, #19191e 30% 60%, #141418 60%); border: 1px solid var(--line2); }
+  #pad::before, #pad::after { content: ""; position: absolute; background: var(--line2); }
+  #pad::before { left: 50%; top: 8px; bottom: 8px; width: 1px; }
+  #pad::after { top: 50%; left: 8px; right: 8px; height: 1px; }
+  #dot { position: absolute; width: 18px; height: 18px; margin: -9px; border-radius: 50%; background: var(--acc);
+         box-shadow: 0 0 14px var(--acc); left: 50%; top: 50%; z-index: 1; }
+  .side { display: flex; flex-direction: column; gap: 6px; flex: 1; }
+  .note { color: var(--dim); font-size: 12px; margin: 0; }
+  input[type=range] { width: 100%; accent-color: var(--acc); }
+  select { font: 600 12.5px/1.2 var(--sans); background: var(--card2); color: var(--text); border: 1px solid var(--line2); border-radius: var(--r2); padding: 8px; min-width: 0; }
+  #err { color: var(--bad); }
+  /* "Новый питомец" forgets him for good: the danger zone's red, quiet until hovered */
+  button.danger { background: rgba(255,69,58,.08); border-color: rgba(255,69,58,.35); color: #ff8a80; }
+  button.danger:hover { background: rgba(255,69,58,.16); border-color: var(--bad); }
+  button:disabled { opacity: .45; cursor: default; transform: none; }
+  /* the loading screen, as the panel's (docs/index.html): black with Pip's eyes blinking, until the firmware (pip.wasm)
+     and three.js are in and the first frame is drawn; on a failure it goes and the error shows. Without the script it
+     goes by itself after 20 s */
+  #loader { position: fixed; inset: 0; z-index: 1000; background: var(--bg); display: flex; flex-direction: column; align-items: center;
+            justify-content: center; gap: 18px; animation: ldgone .45s 20s forwards; }
+  #loader small { color: var(--faint); font: 500 12px var(--sans); min-height: 16px; }
+  @keyframes ldgone { to { opacity: 0; visibility: hidden; } }
+  .ld-eyes { display: flex; gap: 14px; }
+  .ld-eyes i { width: 22px; height: 30px; border-radius: 44% 44% 46% 46%; background: #fff; animation: ldblink 2.4s infinite; }
+  .ld-bar { width: 72px; height: 3px; border-radius: 2px; background: var(--line); overflow: hidden; position: relative; }
+  .ld-bar:after { content: ""; position: absolute; inset: 0; width: 40%; border-radius: 2px; background: var(--acc); animation: ldrun 1.1s cubic-bezier(.4,0,.2,1) infinite; }
+  @keyframes ldblink { 0%, 42%, 50%, 100% { transform: scaleY(1); } 46% { transform: scaleY(.1); } }
+  @keyframes ldrun { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+  @media (prefers-reduced-motion: reduce) { #loader, .ld-eyes i, .ld-bar:after { animation: none; } }
+  #filter { width: 100%; padding: 9px 12px; border-radius: var(--r2); border: 1px solid var(--line2);
+            background: var(--bg2); color: var(--text); font: 500 13px var(--sans); }
+  #filter:focus { outline: none; border-color: var(--acc); }
+  #moods { max-height: 320px; overflow-y: auto; overflow-x: hidden; padding-right: 4px; scrollbar-width: thin; scrollbar-color: var(--line2) transparent; }
+  #moods::-webkit-scrollbar { width: 6px; height: 0; } #moods::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 3px; }
+  #moods { grid-auto-rows: max-content; align-content: start; } /* the scroll box's height never squashes a two-line row */
+  /* the three characters: the longest name (Уравновешенный) fits a third of the card, centred */
+  #care button { padding-left: 2px; padding-right: 2px; text-align: center; white-space: nowrap; }
+  #moods button, #voices button { font-size: 12px; padding: 6px 4px; min-height: 32px; min-width: 0; hyphens: auto; overflow-wrap: break-word; }
+  .need { display: grid; grid-template-columns: 112px 1fr 44px; gap: 10px; align-items: center; font-size: 12.5px; font-weight: 600; }
+  .bar { height: 8px; border-radius: 4px; background: var(--card2); border: 1px solid var(--line); overflow: hidden; position: relative; }
+  .bar > i { position: absolute; top: 0; bottom: 0; left: 0; background: linear-gradient(90deg, var(--acc), var(--acc2)); }
+  .bar.low > i { background: var(--bad); }
+  .val { color: var(--dim); text-align: right; font: 600 12px var(--mono); }
+  /* a case key: what you press, and under it what it does */
+  button.key { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 7px 6px; }
+  button.key b { font-weight: 700; }
+  button.key small { font-size: 11.5px; font-weight: 500; color: var(--dim); }
+  .sub { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); margin: 2px 0 -4px; }
+</style>
+</head>
+<body>
+<div id="loader" aria-hidden="true"><div class="ld-eyes"><i></i><i></i></div><div class="ld-bar"></div><small id="ldText"></small></div>
+<script>
+/* the loading screen's line, and its end: hideLoader() once the first frame is up, or on any error */
+/* faded by one Web Animation and then only hidden, never removed: a CSS transition with the element taken out under
+   it made Chrome put the black screen back for a frame or two after the fade (seen on F5; the panel's loader too) */
+window.hideLoader = () => {
+  const l = document.getElementById('loader');
+  if (!l || l.dataset.gone) return;
+  l.dataset.gone = '1';
+  l.style.pointerEvents = 'none';
+  const done = () => { l.style.visibility = 'hidden'; l.style.opacity = '0'; }; /* twice is harmless */
+  if (!l.animate || getComputedStyle(l).visibility === 'hidden') return done();
+  l.animate([{opacity: 1}, {opacity: 0}], {duration: 450, easing: 'ease', fill: 'forwards'}).finished.then(done, done);
+  setTimeout(done, 700); /* a background tab draws no frames: its animation may not finish on time */
+};
+window.loaderSay = t => { const e = document.getElementById('ldText'); if (e) e.textContent = t; };
+addEventListener('error', () => window.hideLoader());
+addEventListener('unhandledrejection', () => window.hideLoader());
+</script>
+<div id="view">
+  <div id="batTag">—</div>
+  <div id="brand"><div class="logo"><i></i><i></i></div><div><b>Пип — симулятор</b><small>та же прошивка, что на брелоке</small></div></div>
+  <div id="hint"><b>Мышь на экране</b> — палец · <b>тяни корпус</b> — наклон · <b>колесо</b> — зум ·
+    <b>верхняя</b> — меню / открыть · <b>нижняя</b> — назад / знакомство; на Пипе зажать — покормить, нажать и сразу зажать — помыть, из приложения дважды — к Пипу</div>
+</div>
+<div id="panel">
+  <div class="card">
+    <div class="row">
+      <canvas id="preview" width="476" height="476"></canvas>
+      <div>
+        <div id="mood">…</div>
+        <div id="reaction"></div>
+        <div class="note" id="err"></div>
+      </div>
+    </div>
+    <div class="mono" id="readout"></div>
+  </div>
+
+  <div class="card">
+    <h2><i></i>Жизненные показатели</h2>
+    <div id="needs"></div>
+    <div class="mono" id="petinfo"></div>
+    <div class="grid">
+      <button id="feed">Покормить</button>
+      <button id="play">Поиграть</button>
+      <button id="wash">Помыть</button>
+      <button id="soil">Испачкать</button>
+      <button id="rare">Редкая эмоция</button>
+      <button id="auto" class="on">Автонастроение</button>
+    </div>
+    <div class="sub">Время</div>
+    <div class="grid" id="speeds">
+      <button data-speed="1" class="on">×1</button>
+      <button data-speed="60">×60</button>
+      <button data-speed="600">×600</button>
+      <button id="plus1">+1 час</button>
+      <button id="plus5">+5 часов</button>
+      <button id="plus24">+1 день</button>
+    </div>
+    <button id="clockReal" style="width:100%;margin-bottom:6px">Вернуть реальное время</button>
+    <div class="grid two"><button id="clockSync">Синхронизировать</button><button id="clockLost">Рассинхронизировать</button></div>
+    <p class="note">Рассинхронизировать — как после выключения или разряда: «Часы» просят синхронизировать время, его передаст подключённый iPhone или панель.</p>
+    <div class="sub">День рождения владельца</div>
+    <div class="grid">
+      <select id="bdD" aria-label="День"></select>
+      <select id="bdM" aria-label="Месяц"></select>
+      <button id="bdOn">Выключено</button>
+    </div>
+    <p class="note">Как «Дни рождения» на панели. В этот день, если время синхронизировано, Пип при первом взгляде поёт «С днём рождения тебя» с хлопушками, а потом весь день празднует.</p>
+    <button id="newpet" class="danger">Новый питомец</button>
+    <p class="note">Пип сохраняется в браузере и живёт, пока вкладка закрыта. Чистота падает со временем и от прогулок; ниже ~55% на экране появляется пыль.</p>
+  </div>
+
+  <div class="card">
+    <h2><i></i>Движение</h2>
+    <div class="row">
+      <div id="pad" title="Наклон: тяни точку"><div id="dot"></div></div>
+      <div class="side">
+        <button id="shake">Встряхнуть</button>
+        <button id="flip">Экраном вниз</button>
+        <button id="upside">Вверх ногами</button>
+        <button id="tumble">Кувырок</button>
+        <button id="walk">Ходьба</button>
+        <button id="drop">Уронить</button>
+        <button id="throw">Бросить</button>
+        <button id="level">Ровно</button>
+      </div>
+    </div>
+    <p class="note">Точка — куда опущен край брелока. Глаза «скатываются» под наклон и через пару секунд привыкают к новому положению руки.
+      «Экраном вниз» меньше чем на 2 секунды и обратно — это прятки, дольше — сон. «Вверх ногами» держится, пока не нажать снова.
+      Уронить — свободное падение; бросить — сильный толчок и падение: Пип различает их и обижается по-разному.</p>
+  </div>
+
+  <div class="card">
+    <h2><i></i>Жесты</h2>
+    <div class="grid two">
+      <button id="gSpread">Развести глаза</button>
+      <button id="gPinch">Свести глаза</button>
+      <button id="gPair">Два пальца</button>
+      <button id="gPalm">Ладонь</button>
+    </div>
+    <p class="note">Как мультитач на брелоке (он видит два пальца и ладонь): два пальца на глазах развести — глаза растягиваются
+      и со звоном схлопываются, свести — глаза съезжаются к носу и косят, а отпустишь — разлетаются обратно. Два пальца в другом
+      месте — глаза разбегаются от одного к другому. Ладонь — Пипа сплющивает.</p>
+  </div>
+
+  <div class="card">
+    <h2><i></i>Кнопки корпуса</h2>
+    <div class="grid two">
+      <button id="pwr" class="key"><b>Верхняя</b><small>меню, открыть</small></button>
+      <button id="boot" class="key"><b>Нижняя</b><small>назад, знакомство</small></button>
+      <button id="bootHold" class="key"><b>Зажать нижнюю</b><small>покормить</small></button>
+      <button id="washBtn" class="key"><b>Нажать и зажать нижнюю</b><small>помыть</small></button>
+      <button id="mic" style="grid-column:1/-1">Включить микрофон</button>
+    </div>
+    <p class="note" id="mic-note">Микрофон компьютера или гарнитуры: Пип слышит хлопки и то, как на него дуют, а шумомер показывает громкость.</p>
+  </div>
+
+  <div class="card">
+    <h2><i></i>Жесты</h2>
+    <div class="grid">
+      <button id="poke">Тык</button>
+      <button id="poke3">Тык ×3</button>
+      <button id="pet">Погладить</button>
+      <button id="sneeze">Чихнуть</button>
+      <button id="burp">Рыгнуть</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><i></i>Внешний вид</h2>
+    <div class="sub">Тема</div>
+    <div class="grid" id="themes"></div>
+    <div class="sub">Цвет глаз</div>
+    <div class="grid two" id="eyecolors"></div>
+    <p class="note">Тема меняет меню и приложения, Пип остаётся прежним. Слева у глаза цвет зрачка, справа — вокруг него.</p>
+  </div>
+
+  <div class="card">
+    <h2><i></i>Характер Пипа</h2>
+    <div class="grid" id="care"></div>
+    <p class="note" id="careNote"></p>
+  </div>
+
+  <div class="card">
+    <h2><i></i>Настроение</h2>
+    <input id="filter" placeholder="поиск: злость, страх…" autocomplete="off">
+    <div class="grid" id="moods"></div>
+  </div>
+
+  <div class="card">
+    <h2><i></i>Голос</h2>
+    <div class="grid" id="voices"></div>
+    <button id="mute" class="on" style="width:100%">Звук включён</button>
+    <p class="note" id="audio-note">Звук включится после первого клика по странице (так требует браузер).</p>
+  </div>
+
+
+  <div class="card">
+    <h2><i></i>Экран</h2>
+    <div class="sub">Засыпает, если его не трогать</div>
+    <div class="grid" id="power"></div>
+    <button id="shakewake">Просыпается от движения</button>
+    <p class="note" id="powerNote"></p>
+  </div>
+
+  <div class="card">
+    <h2><i></i>Батарея</h2>
+    <div class="mono" id="batlog">—</div>
+    <input type="range" id="batpct" min="0" max="100" step="1" aria-label="Заряд, %">
+    <div class="grid two">
+      <button id="cable">Подключить кабель</button>
+      <button id="cableOff">Отключить кабель</button>
+    </div>
+    <p class="note">Кабель можно и щёлкнуть на модели. Без кабеля заряд тает (с горящим экраном быстрее), на нуле брелок выключается и включается кабелем или верхней кнопкой, если есть заряд. Время ×60/×600, +1/+5 часов и +1 день разряжают и заряжают тоже.</p>
+  </div>
+
+  <div class="card">
+    <h2><i></i>iPhone (поддельный)</h2>
+    <div class="grid" id="phone">
+      <button data-k="L" data-a="1">Сопряжение</button>
+      <button data-k="L" data-a="2">Подключить</button>
+      <button data-k="L" data-a="0">Отключить</button>
+      <button data-k="N" data-a="0">Уведомление</button>
+      <button data-k="C" data-a="1">Звонок</button>
+      <button data-k="C" data-a="0">Сбросить</button>
+      <button data-k="M" data-a="1">Включить трек</button>
+      <button data-k="M" data-a="0">Пауза</button>
+    </div>
+    <div class="mono" id="phonelog">брелок → iPhone: —</div>
+    <p class="note">Уведомление приходит и без подключения; звонки и музыка — с подключённым телефоном. Так ведёт себя настоящий iPhone по Bluetooth (ANCS, AMS, затвор камеры — «громкость +»), приложение не нужно.</p>
+  </div>
+
+  <div class="card">
+    <h2><i></i>Android (поддельный)</h2>
+    <div class="grid" id="android">
+      <button data-k="A" data-a="1">Сопряжение</button>
+      <button data-k="A" data-a="2">Подключить</button>
+      <button data-k="A" data-a="0">Отключить</button>
+    </div>
+    <div class="mono" id="androidlog">Android: не подключён</div>
+    <p class="note">Без приложения Android даёт брелоку только затвор камеры: «Уведомления» и «Музыка» пишут, что на Android это не поддерживается. Время — с панели. Подключение заменяет iPhone: телефон у брелока один.</p>
+  </div>
+
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+/* the cards fold by their titles: a click or Enter/Space on the title, a chevron at its right */
+for (const h of document.querySelectorAll('#panel > .card > h2')) {
+  const card = h.parentElement;
+  h.tabIndex = 0;
+  h.setAttribute('role', 'button');
+  h.setAttribute('aria-expanded', 'true');
+  h.insertAdjacentHTML('beforeend', '<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>');
+  const toggle = () => h.setAttribute('aria-expanded', String(!card.classList.toggle('folded')));
+  h.addEventListener('click', toggle);
+  h.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+}
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+const S = 466, TEX = 476, OFF = (TEX - S) / 2; /* the glass is barely wider than the round panel */
+const RU = {
+  neutral: 'спокойный', happy: 'радость', sad: 'грусть', angry: 'злость', surprised: 'удивление', sleepy: 'сонный',
+  asleep: 'спит', skeptical: 'скептичный', curious: 'любопытство', love: 'влюблён', dizzy: 'кружится голова', ouch: 'больно',
+  stoned: 'накуренный', pinkeye: 'конъюнктивит', nauseous: 'тошнит', sick: 'заболел', tired: 'устал', exhausted: 'истощение',
+  annoyed: 'раздражение', furious: 'бешенство', rage: 'ярость', swearing: 'ругается', indignant: 'возмущение',
+  belligerent: 'воинственность', hurt: 'обида', disgusted: 'отвращение',
+  suspicious: 'подозревает', cynical: 'цинизм', afraid: 'страх', nervous: 'нервозность',
+  despondent: 'уныние', lonely: 'одиночество', gloomy: 'мрачность', dull: 'отупение', shy: 'застенчивость', smug: 'самодовольство',
+  bored: 'скука', shocked: 'шок', dismayed: 'смятение', puzzled: 'озадаченность',
+  amazed: 'изумление', cheeky: 'дерзость', content: 'доволен', comfy: 'комфорт', yes: 'согласие', no: 'отказ',
+  meet: 'знакомится…', 'not in the mood': 'не до знакомств', 'likes you': 'ты ему понравился', 'dislikes you': 'ты ему не понравился', wary: 'насторожился',
+  poke: 'тычок', 'fed up': 'надоели тычки', 'shaken silly': 'растрясли', "time's up": 'время вышло!', yum: 'ест', food: 'летит печенька…', 'no more food': 'не будет есть', 'stop feeding': 'злится: хватит кормить', 'too full': 'объелся',
+  enough: 'хватит кормить!', play: 'играем!', 'worn out': 'нет сил играть', 'woken up': 'разбудили', pet: 'гладят',
+  'face down': 'лежит экраном вниз', 'woke up': 'проснулся', bang: 'громкий звук!', dropped: 'уронили!', 'upside down': 'вверх ногами',
+  flood: 'много уведомлений', answered: 'ответили на звонок', declined: 'отклонили звонок', 'missed call': 'пропущенный звонок',
+  paired: 'телефон подключён', 'glad you\'re back': 'рад, что вернулись', sulks: 'обиделся, что долго не заходили',
+  won: 'выиграл у тебя', lost: 'проиграл', record: 'рекорд!',
+  allergic: 'аллергия', frozen: 'замёрз', overheated: 'перегрелся', smitten: 'втрескался', hypnotized: 'под гипнозом',
+  hyper: 'сахарный угар', zombie: 'недосып (зомби)',
+  berserk: 'безумие', dancing: 'танцует', excited: 'восторг', dreamy: 'мечтает', pouty: 'надулся', proud: 'гордость', focused: 'сосредоточен',
+  touched: 'растроган', playful: 'игривость', relieved: 'облегчение', laughing: 'хохот', grateful: 'благодарность',
+  whirled: 'кружится за пальцем', woozy: 'голова плывёт', impatient: 'нетерпение', wistful: 'мечтает о далёком', blissful: 'блаженство', adoring: 'восхищение', sly: 'хитрость', sheepish: 'виноватость', determined: 'решимость', eureka: 'озарение', eyeroll: 'закатывает глаза', flustered: 'смущение',
+  squished: 'сплющило', stretched: 'растянули', overwhelmed: 'глаза разбегаются',  beaming: 'сияет', cuddly: 'ласкается',
+  eager: 'в предвкушении', yummy: 'смакует', triumphant: 'торжествует', deflated: 'сдулся', sparkling: 'сияет чистотой', groggy: 'спросонья',
+  hic: 'икает', toot: 'пук!', 'hiccups gone': 'икота прошла', aha: 'ага!', 'rolls eyes': 'закатывает глаза', schemes: 'что-то задумал',
+  daydreams: 'мечтает', bliss: 'блаженствует', 'adores you': 'любуется тобой', waits: 'ждёт тебя', cheek: 'щёчка', 'cheek rub': 'гладят щёчку',
+  chin: 'по подбородку', 'chin rub': 'чешут подбородок', 'side poke': 'тык в бок', 'finger in eye': 'палец в глазу', crouch: 'приготовился', sorry: 'виновато',
+  swing: 'качают', 'warm finger': 'палец лежит', tracking: 'следит за пальцем', tickle: 'щекочут',
+  teased: 'дразнили', peekaboo: 'прятки', 'walk goal': 'прогулка набрана', thanks: 'спасибо за еду', thrown: 'бросили!',
+  scrub: 'моют — нравится', 'not dirty': 'моют чистого — злится', fresh: 'чистенький!', washed: 'помыли', 'too dirty': 'слишком грязный, чтобы играть',
+  tickled: 'щекотно', 'stop it': 'хватит!', pestered: 'задёргали', 'head spin': 'кружится голова', phew: 'облегчение',
+  'tapped awake': 'растормошили', groove: 'качается в такт', drums: 'отстукивает ритм', 'your turn': 'твой ход', 'right beat': 'верно!',
+  'wrong beat': 'не тот ритм', 'rhythm master': 'мастер ритма', 'no answer': 'никто не повторил', 'perked up': 'взбодрился',
+  'sore loser': 'проигрывает раз за разом', charging: 'зарядка — ням', birthday: 'с днём рождения!', festive: 'праздник', tumbling: 'кувыркается', 'tumbled out': 'накувыркался', overcharged: 'перезарядили — обиделся', 'unplugged right': 'сняли с зарядки вовремя', 'cable fiddling': 'хватит дёргать кабель', 'cable again': 'опять кабель?', awake: 'проснулся', drained: 'разрядили до нуля — злится', hello: 'привет!', blown: 'подули',
+  sore: 'проигрывает раз за разом', 'sponge away': 'швырнул губку!', 'says hi': 'здоровается', flinch: 'отпрянул', 'danced out': 'натанцевался', chase: 'ловит палец', caught: 'поймал!', jealous: 'ревнует к телефону', 'no washing': 'не даёт себя мыть', sneeze: 'чихает', burp: 'отрыжка',
+  'still cross': 'гладят, но ещё злится', 'sulky bite': 'съел, но без «спасибо»', 'sulky: no food': 'обиделся: не ест', 'sulky: no washing': 'обиделся: не даёт мыть', sulking: 'обиделся: не играет',
+  palm: 'ладонь сверху', 'palm off': 'ладонь убрали', 'let go': 'отпустили — бдыщ', 'two fingers': 'два пальца разом', pinched: 'глаза свели', popped: 'отпустили — чпок',
+  'fingers gone': 'пальцы убрали',
+  starstruck: 'звёзды в глазах', singing: 'поёт', kiss: 'чмок', flirty: 'кокетничает', rainbow: 'радужный', peeking: 'выглядывает', zen: 'дзен',
+  sweetdream: 'сладкий сон', melting: 'растаял', applause: 'аплодирует', cool: 'крутой', puppy: 'щенячьи глазки', butterfly: 'бабочка', bubbles: 'пузыри',
+  robot: 'робот', kitty: 'мурлыка', silly: 'дурачится', snicker: 'давится смехом', campfire: 'у костра', stargazing: 'звездочёт', zapped: 'заряд бодрости', sipping: 'пьёт ток',
+  'starry-eyed': 'звёзды в глазах', sings: 'поёт', kisses: 'чмок!', flirts: 'кокетничает', hides: 'прячется и выглядывает', melts: 'растаял', claps: 'аплодирует',
+  'puppy eyes': 'щенячьи глазки', purrs: 'мурлычет', clowns: 'дурачится', snickers: 'давится смехом', stargazes: 'смотрит на звёзды',
+  'charging: zap': 'зарядка — молния!', 'charging: sip': 'зарядка — пьёт ток',
+  xd: 'смех 2', rofl: 'смех 3', bouncy: 'радость 2', blooming: 'радость 3', hearteyes: 'любовь 2', fireworks: 'восторг 2', medal: 'гордость 2',
+  disco: 'танец 2', popeyed: 'изумление 2', lightbulb: 'ага! 2', paws: 'смущение 2', hello: 'привет!', king: 'король', angel: 'ангелочек',
+  imp: 'проказник', juggler: 'жонглёр', balloon: 'воздушный шарик', icecream: 'мороженое', umbrella: 'под зонтиком', strongman: 'силач',
+  magician: 'фокусник', sunrise: 'доброе утро', sheep: 'считает овец', ninja: 'ниндзя', sprout: 'росток', raincloud: 'грусть 2', sobbing: 'грусть 3',
+  heartbroken: 'разбитое сердце', fuming: 'злость 2', burning: 'злость 3', sulking: 'обида 2', spooked: 'страх 2', tumbleweed: 'скука 2',
+  lowbatt: 'усталость 2', hungry: 'голодные мечты', knockout: 'нокаут', wilted: 'тоска', sniffles: 'простуда',
+  charged: 'зарядился', cutoff: 'не дали допить', empty: 'обесточен', queasy: 'тошнит',
+  'unplugged: full': 'кабель вытащили: зарядился', 'unplugged: low': 'кабель вытащили: не допил', 'unplugged: empty': 'кабель вытащили: обесточен',
+  squeals: 'хохочет «> <»', 'rolls laughing': 'катается со смеху', bounces: 'скачет мячиком', blooms: 'цветы вокруг', 'heart eyes': 'глаза-сердечки',
+  'eyes pop': 'глаза на лоб', 'bright idea': 'лампочка: придумал!', 'hides in paws': 'прячется в лапки',
+  'waves hi': 'машет: привет!', juggles: 'жонглирует',
+  'ice cream': 'мороженое', 'lifts weights': 'поднимает штангу', 'magic trick': 'фокус!', 'good morning': 'доброе утро',
+  'counts sheep': 'считает овец', sprouts: 'вырос росток', 'rain cloud': 'своя тучка', sobs: 'ревёт',
+  fumes: 'закипает', burns: 'горит от злости', 'turns away': 'отвернулся: хмф!',
+  'run down': 'батарейка села', 'dreams of food': 'мечтает о печенье', 'knocked out': 'нокаут', wilts: 'тоска', };
+
+// always the fresh build: the browser happily caches pip.js/pip.wasm across rebuilds
+const bust = '?v=' + Date.now();
+loaderSay('Загружаю прошивку…');
+const { default: createPip } = await import('./pip.js' + bust);
+const M = await createPip({ locateFile: p => p + bust });
+loaderSay('Собираю брелок…');
+M._sim_init((Math.random() * 2 ** 31) >>> 0);
+
+/* ---------- the pet: a wall clock (with fast-forward) and persistence in localStorage ---------- */
+const TZ = -new Date().getTimezoneOffset();
+/* "Новый питомец" bumps keypet.gen: a page started before it (this one reloading, or another tab of the simulator)
+   must not write its old pet and settings back over the reset - it writes nothing more and reloads */
+let resetting = false;
+const store = { get: k => { try { return localStorage.getItem(k); } catch { return null; } },
+                set: (k, v) => { try { if (!resetting && localStorage.getItem('keypet.gen') === GEN) localStorage.setItem(k, v); } catch {} },
+                del: k => { try { localStorage.removeItem(k); } catch {} } };
+const GEN = (() => { try { return localStorage.getItem('keypet.gen') ?? (localStorage.setItem('keypet.gen', '1'), '1'); } catch { return null; } })();
+addEventListener('storage', e => { if (e.key === 'keypet.gen' && e.newValue !== GEN) { resetting = true; location.reload(); } });
+let clockOffset = +(store.get('keypet.clockOffset') || 0), timeSpeed = 1;
+const simNow = () => Date.now() / 1000 + clockOffset;
+const saved = store.get('keypet.pet'), deadDays = +(store.get('keypet.dead') || 0);
+if (deadDays > 0) M._sim_set_dead(deadDays); /* he died here before: still gone, as on the board after an update */
+else if (saved) {
+  const bytes = Uint8Array.from(atob(saved), c => c.charCodeAt(0));
+  M.HEAPU8.set(bytes, M._sim_pet_buf());
+  if (!M._sim_pet_restore(bytes.length)) console.warn('saved pet is from another version, starting fresh');
+}
+M._sim_time(simNow(), TZ); // catches up whatever happened while the tab was closed
+function savePet() {
+  const dead = M._sim_dead_days();
+  if (dead > 0) { store.set('keypet.dead', String(dead)); store.del('keypet.pet'); return; }
+  const n = M._sim_pet_save(), p = M._sim_pet_buf();
+  store.set('keypet.pet', btoa(String.fromCharCode(...M.HEAPU8.subarray(p, p + n))));
+  store.set('keypet.clockOffset', String(clockOffset));
+}
+setInterval(savePet, 3000);
+addEventListener('pagehide', savePet);
+
+/* ---------- screen texture: the wasm framebuffer, RGB565 -> RGBA ---------- */
+const screenCanvas = document.getElementById('preview');
+const sctx = screenCanvas.getContext('2d');
+sctx.fillStyle = '#000'; sctx.fillRect(0, 0, TEX, TEX);
+const img = sctx.createImageData(S, S);
+const px32 = new Uint32Array(img.data.buffer);
+const lut5 = Array.from({ length: 32 }, (_, i) => Math.round(i * 255 / 31));
+const lut6 = Array.from({ length: 64 }, (_, i) => Math.round(i * 255 / 63));
+let brightKept = +(store.get('keypet.bright') || 60);
+function blitScreen() {
+  if (poweredOff || !M._sim_display_on()) { sctx.fillStyle = '#000'; sctx.fillRect(0, 0, TEX, TEX); return; } /* face down: the panel sleeps */
+  const fb = new Uint16Array(M.HEAPU16.buffer, M._sim_fb(), S * S);
+  for (let i = 0; i < S * S; i++) {
+    const c = fb[i];
+    px32[i] = 0xff000000 | lut5[c & 31] << 16 | lut6[(c >> 5) & 63] << 8 | lut5[c >> 11];
+  }
+  sctx.putImageData(img, OFF, OFF);
+  const br = M._sim_bright(); /* Настройки > Яркость: the panel lit lower (never quite black: 10% still reads) */
+  if (br !== brightKept) brightKept = br, store.set('keypet.bright', String(br));
+  const lit = M._sim_lit(); /* the torch lights at full, whatever the setting */
+  if (lit < 100) { sctx.fillStyle = `rgba(0,0,0,${(0.7 * (1 - lit / 100)).toFixed(3)})`; sctx.fillRect(OFF, OFF, S, S); sctx.fillStyle = '#000'; }
+  /* the panel is round: pixels outside its circle don't exist */
+  sctx.beginPath();
+  sctx.rect(0, 0, TEX, TEX);
+  sctx.arc(TEX / 2, TEX / 2, S / 2, 0, Math.PI * 2, true);
+  sctx.fill('evenodd');
+}
+
+/* ---------- 3D device ---------- */
+const view = document.getElementById('view');
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }); /* transparent: the CSS backdrop shows through */
+renderer.setPixelRatio(devicePixelRatio);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+view.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+renderer.setClearColor(0x000000, 0);
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+const camera = new THREE.PerspectiveCamera(26, 1, 1, 2000);
+let camDist = 175;
+const key = new THREE.DirectionalLight(0xffffff, 1.2);
+key.position.set(-60, 90, 120);
+scene.add(key);
+
+// sizes in mm: the 1.75" AMOLED is 44.45 mm across, the glass a hair wider (check the real border on the board)
+const GLASS_R = 44.45 / 2 * TEX / S, R = GLASS_R + 3.4, BACK = -6.5, SIDE_TOP = 3.6, GLASS_Z = 5.0;
+function arc(cx, cy, r, a0, a1, n = 10) {
+  return Array.from({ length: n + 1 }, (_, i) => {
+    const a = a0 + (a1 - a0) * i / n;
+    return new THREE.Vector2(cx + r * Math.cos(a), cy + r * Math.sin(a));
+  });
+}
+const lathe = (pts, mat) => {
+  const m = new THREE.Mesh(new THREE.LatheGeometry(pts, 160), mat);
+  m.rotation.x = Math.PI / 2; // lathe axis (y) -> device z, front faces the camera
+  return m;
+};
+const brushed = new THREE.MeshPhysicalMaterial({ color: 0xc4c6cc, metalness: 1, roughness: 0.34 });
+const polished = new THREE.MeshPhysicalMaterial({ color: 0xd8d9de, metalness: 1, roughness: 0.12 });
+const dev = new THREE.Group();
+// LatheGeometry wants points from the axis outward in order; y here is depth (back -> front)
+dev.add(lathe([new THREE.Vector2(0, BACK), ...arc(R - 3, BACK + 3, 3, -Math.PI / 2, 0), new THREE.Vector2(R, SIDE_TOP)], brushed));
+dev.add(lathe([...arc(R - 2.2, SIDE_TOP, 2.2, 0, Math.PI * 0.62, 14), new THREE.Vector2(GLASS_R + 0.15, GLASS_Z + 0.1),
+  new THREE.Vector2(GLASS_R, GLASS_Z)], polished));
+
+const screenTex = new THREE.CanvasTexture(screenCanvas);
+screenTex.colorSpace = THREE.SRGBColorSpace;
+screenTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+/* no room in the glass (envMapIntensity 0): tilted, its Fresnel reflection grew to a mirror and washed the whole
+   screen out; only the lamp's highlight stays, small and soft */
+const glassMat = new THREE.MeshPhysicalMaterial({ color: 0x000000, roughness: 0.12,
+  emissive: 0xffffff, emissiveMap: screenTex, envMapIntensity: 0, specularIntensity: 0.3 });
+glassMat.toneMapped = false; // the panel's own colors, not the scene's tone curve
+const screen = new THREE.Mesh(new THREE.CircleGeometry(GLASS_R, 160), glassMat);
+screen.position.z = GLASS_Z;
+dev.add(screen);
+
+// side buttons on the right edge: PWR higher, BOOT lower (check against the real board)
+const buttons = [];
+for (const [id, deg] of [[0, 34], [1, -20]]) {
+  const b = new THREE.Mesh(new THREE.CapsuleGeometry(1.5, 2.4, 6, 16), polished);
+  const a = THREE.MathUtils.degToRad(deg);
+  b.userData = { id, rest: new THREE.Vector3(Math.cos(a) * (R + 0.5), Math.sin(a) * (R + 0.5), -1.5), dir: new THREE.Vector3(Math.cos(a), Math.sin(a), 0) };
+  b.position.copy(b.userData.rest);
+  b.rotation.z = a; // capsule lies along the rim
+  dev.add(b);
+  buttons.push(b);
+}
+scene.add(dev);
+
+function resize() {
+  const w = view.clientWidth, h = view.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+new ResizeObserver(resize).observe(view); /* the pane can change size without a window resize */
+resize();
+
+/* ---------- device pose: drag to turn him, the accelerometer follows ---------- */
+const tgt = { pitch: 0, yaw: 0, roll: 0 }, cur = { ...tgt };
+let shakeLeft = 0, walking = false, faceDown = false, upside = false, simTime = 0;
+let pushLeft = 0, fallLeft = 0; /* thrown: a shove first; dropped or thrown: then a free fall */
+const FALL_S = 0.45, PUSH_S = 0.15;
+
+const pad = document.getElementById('pad'), dot = document.getElementById('dot');
+const PAD_MAX = 1.1; // rad at the pad edge
+function syncDot() {
+  let u = -tgt.roll / PAD_MAX, v = tgt.pitch / PAD_MAX;
+  const l = Math.hypot(u, v);
+  if (l > 1) { u /= l; v /= l; }
+  dot.style.left = (50 + u * 45) + '%';
+  dot.style.top = (50 + v * 45) + '%';
+}
+function padMove(e) {
+  const r = pad.getBoundingClientRect();
+  let u = (e.clientX - r.left) / r.width * 2 - 1, v = (e.clientY - r.top) / r.height * 2 - 1;
+  const l = Math.hypot(u, v);
+  if (l > 1) { u /= l; v /= l; }
+  tgt.roll = -u * PAD_MAX;   // dot right = right side down = clockwise from the front
+  tgt.pitch = v * PAD_MAX;   // dot down = top edge comes toward you
+  faceDown = upside = false; flipBtn.classList.remove('on'); upBtn.classList.remove('on');
+  syncDot();
+}
+pad.addEventListener('pointerdown', e => { pad.setPointerCapture(e.pointerId); padMove(e); });
+pad.addEventListener('pointermove', e => { if (e.buttons) padMove(e); });
+
+const flipBtn = document.getElementById('flip');
+flipBtn.onclick = () => {
+  faceDown = !faceDown, upside = false;
+  Object.assign(tgt, faceDown ? { pitch: Math.PI / 2, roll: 0 } : { pitch: 0, roll: 0 });
+  flipBtn.classList.toggle('on', faceDown); upBtn.classList.remove('on');
+  syncDot();
+};
+const upBtn = document.getElementById('upside'); /* held upside down until pressed again: the top edge points at the floor */
+upBtn.onclick = () => {
+  upside = !upside, faceDown = false;
+  Object.assign(tgt, upside ? { pitch: 0, roll: Math.PI } : { pitch: 0, roll: 0 });
+  upBtn.classList.toggle('on', upside); flipBtn.classList.remove('on');
+  syncDot();
+};
+document.getElementById('level').onclick = () => {
+  Object.assign(tgt, { pitch: 0, yaw: 0, roll: 0 });
+  faceDown = upside = false; flipBtn.classList.remove('on'); upBtn.classList.remove('on'); syncDot();
+};
+/* tumbling: over and back twice, quickly (pip.c tumble_turn wants four turns within 4 s) */
+document.getElementById('tumble').onclick = () => {
+  upside = faceDown = false; flipBtn.classList.remove('on'); upBtn.classList.remove('on');
+  for (let i = 0; i < 4; i++) setTimeout(() => { Object.assign(tgt, { pitch: 0, roll: i % 2 ? 0 : Math.PI }); syncDot(); }, i * 380);
+};
+document.getElementById('drop').onclick = () => { if (!pushLeft && !fallLeft) fallLeft = FALL_S; };
+document.getElementById('throw').onclick = () => { if (!pushLeft && !fallLeft) pushLeft = PUSH_S; };
+document.getElementById('shake').onclick = () => { shakeLeft = 1.6; };
+const walkBtn = document.getElementById('walk');
+walkBtn.onclick = () => { walking = !walking; walkBtn.classList.toggle('on', walking); };
+
+/* ---------- mouse: finger on the glass, otherwise rotate the device ---------- */
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+let drag = null, touch = null, held = null;
+function hit(e) {
+  const r = renderer.domElement.getBoundingClientRect();
+  ndc.set((e.clientX - r.left) / r.width * 2 - 1, -(e.clientY - r.top) / r.height * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  return ray.intersectObjects([screen, ...buttons, ...cableParts, ...dev.children], false)[0];
+}
+function screenPoint(h) {
+  return [Math.round(h.uv.x * TEX - OFF), Math.round((1 - h.uv.y) * TEX - OFF)];
+}
+function pressButton(b, hold) { /* hold: let go by releaseButton (holding the bottom one on Pip feeds him) */
+  b.position.copy(b.userData.rest).addScaledVector(b.userData.dir, -0.7);
+  if (poweredOff) { /* off: the top key switches him on if there is charge; nothing else answers */
+    if (b.userData.id === 0 && batPct > 0) powerOn();
+    setTimeout(() => b.position.copy(b.userData.rest), 150);
+    return;
+  }
+  M._sim_button(b.userData.id);
+  b.position.copy(b.userData.rest).addScaledVector(b.userData.dir, -0.7);
+  if (hold) held = b;
+  else setTimeout(() => releaseButton(b), 150);
+}
+function releaseButton(b) {
+  if (!poweredOff) M._sim_button_up(b.userData.id);
+  b.position.copy(b.userData.rest);
+  if (held === b) held = null;
+}
+const canvas = renderer.domElement;
+canvas.addEventListener('pointerdown', e => {
+  canvas.setPointerCapture(e.pointerId);
+  const h = hit(e);
+  if (h && cableParts.includes(h.object)) {
+    setCable(!cableIn);
+  } else if (h && h.object === screen && !poweredOff) {
+    touch = screenPoint(h);
+    M._sim_touch(touch[0], touch[1], 1);
+  } else if (h && buttons.includes(h.object)) {
+    pressButton(h.object, true);
+  } else {
+    drag = { x: e.clientX, y: e.clientY };
+    canvas.style.cursor = 'grabbing';
+  }
+});
+canvas.addEventListener('pointermove', e => {
+  if (touch && !drag) {
+    const h = hit(e);
+    if (h && h.object === screen) { touch = screenPoint(h); M._sim_touch(touch[0], touch[1], 1); }
+  } else if (drag) {
+    tgt.yaw += (e.clientX - drag.x) * 0.008;
+    tgt.pitch += (e.clientY - drag.y) * 0.008;
+    drag = { x: e.clientX, y: e.clientY };
+    syncDot();
+  } else {
+    const h = hit(e);
+    canvas.classList.toggle('screen', !!h && (h.object === screen || buttons.includes(h.object) || cableParts.includes(h.object)));
+  }
+});
+const release = () => {
+  if (touch) M._sim_touch(touch[0], touch[1], 0);
+  if (held) releaseButton(held);
+  touch = drag = null;
+  canvas.style.cursor = '';
+};
+canvas.addEventListener('pointerup', release);
+canvas.addEventListener('pointercancel', release);
+canvas.addEventListener('wheel', e => { e.preventDefault(); camDist = Math.min(320, Math.max(90, camDist * Math.exp(e.deltaY * 0.001))); }, { passive: false });
+
+/* ---------- scripted gestures go through the same touch path as the mouse ---------- */
+const later = (ms, fn) => setTimeout(fn, ms);
+function poke(at = 0) {
+  later(at, () => M._sim_touch(233, 233, 1));
+  later(at + 80, () => M._sim_touch(233, 233, 0));
+}
+document.getElementById('poke').onclick = () => poke();
+document.getElementById('poke3').onclick = () => { poke(0); poke(260); poke(520); };
+document.getElementById('pet').onclick = () => {
+  M._sim_touch(150, 240, 1);
+  for (let i = 1; i <= 70; i++) later(i * 50, () => M._sim_touch(i % 8 < 4 ? 320 : 150, 240 + (i % 3) * 6, 1));
+  later(71 * 50, () => M._sim_touch(150, 240, 0));
+};
+/* gestures: several fingers at once (pip_fingers), as the board's touch panel reports them */
+const fingers = (n, p = [], palm = 0) => M._sim_fingers(n, ...(p.concat([0, 0, 0, 0, 0, 0]).slice(0, 6)), palm);
+document.getElementById('gSpread').onclick = () => {
+  startAudio();
+  for (let i = 0; i <= 12; i++) later(i * 60, () => fingers(2, [125 - i * 6, 233, 345 + i * 6, 233]));
+  later(1700, () => fingers(0));
+};
+document.getElementById('gPinch').onclick = () => {
+  startAudio();
+  for (let i = 0; i <= 10; i++) later(i * 60, () => fingers(2, [115 + i * 6, 233, 355 - i * 6, 233]));
+  later(1600, () => fingers(0));
+};
+document.getElementById('gPair').onclick = () => { startAudio(); fingers(2, [150, 395, 316, 395]); later(2200, () => fingers(0)); };
+document.getElementById('gPalm').onclick = () => { startAudio(); fingers(0, [], 1); later(1500, () => fingers(0)); };
+document.getElementById('sneeze').onclick = () => { startAudio(); M._sim_key('z'.charCodeAt(0)); };
+document.getElementById('burp').onclick = () => { startAudio(); M._sim_key('x'.charCodeAt(0)); };
+document.getElementById('pwr').onclick = () => pressButton(buttons[0]);
+document.getElementById('boot').onclick = () => pressButton(buttons[1]);
+document.getElementById('bootHold').onclick = () => { pressButton(buttons[1], true); setTimeout(() => releaseButton(buttons[1]), 900); };
+/* washing: on his face the bottom key tapped, then at once held (long enough to wash him clean). A dark screen
+   takes a press to wake first, as on the keychain; from an app it goes home first. */
+const washHold = () => {
+  const tapHold = () => {
+    pressButton(buttons[1]); /* the tap (let go after 150 ms) */
+    setTimeout(() => { pressButton(buttons[1], true); setTimeout(() => releaseButton(buttons[1]), 3600); }, 300);
+  };
+  M._sim_home();
+  if (M._sim_display_on()) setTimeout(tapHold, 300); /* after the slide home */
+  else { pressButton(buttons[0]); setTimeout(tapHold, 400); }
+};
+document.getElementById('washBtn').onclick = washHold;
+const THEMES = [[0, 'Стандартная'], [1, 'Ретро'], [2, 'Барби']];
+const themesEl = document.getElementById('themes');
+const showTheme = () => { [...themesEl.children].forEach((b, k) => b.classList.toggle('on', THEMES[k][0] === M._sim_theme())); };
+THEMES.forEach(([i, name]) => {
+  const b = document.createElement('button');
+  b.textContent = name;
+  b.onclick = () => { M._sim_set_theme(i); store.set('keypet.theme', String(i)); showTheme(); };
+  themesEl.append(b);
+});
+const savedTheme = +(store.get('keypet.theme') || 0);
+M._sim_set_theme(THEMES.some(([i]) => i === savedTheme) ? savedTheme : 0); /* Стандартная by default */
+showTheme();
+
+/* eye colours: the same list as eye_sets[] in ui/pip.c (name, pupil, white) */
+const EYES = [['Стандартный', '#1c1c1c', '#ffffff'], ['Бабл-гам', '#ffffff', '#f542e6'], ['Снежок', '#5878f3', '#ffffff'],
+  ['Карамель', '#e8fca5', '#f673d9'], ['Персик', '#f76e5c', '#fdfbe2'], ['Смузи', '#ce0959', '#feece0'], ['Лазурь', '#ffffff', '#03a9f7'],
+  ['Леди Баг', '#1c1c1c', '#c3110d'], ['Петуния', '#f006b5', '#f7affb'], ['Золотая рыбка', '#df9109', '#e0f4fb']];
+const eyesEl = document.getElementById('eyecolors');
+const showEyes = () => { [...eyesEl.children].forEach((b, k) => b.classList.toggle('on', k === M._sim_eyes())); };
+EYES.forEach(([name, pupil, white], i) => {
+  const b = document.createElement('button');
+  b.innerHTML = `<span class="swatch" style="background:linear-gradient(90deg,${pupil} 50%,${white} 50%)"></span>${name}`;
+  b.onclick = () => { M._sim_set_eyes(i); store.set('keypet.eyes', String(i)); showEyes(); };
+  eyesEl.append(b);
+});
+M._sim_set_eyes(+(store.get('keypet.eyes') || 0));
+M._sim_set_bright(brightKept); /* Настройки > Яркость, as it was left */
+showEyes();
+
+/* how much looking after he needs: the same levels as pet.c levels[] */
+const CARE = [['Неприхотливый', 'Еда раз в день, немного пройтись, мыть раз в день'], ['Уравновешенный', 'Еда два раза в день, прогулка каждый день, мыть раз в день'],
+  ['Требовательный', 'Еда до трёх раз в день, большая прогулка, игры, мыть дважды в день']];
+const careEl = document.getElementById('care');
+const showCare = () => {
+  const c = M._sim_care();
+  [...careEl.children].forEach((b, k) => b.classList.toggle('on', k === c));
+  document.getElementById('careNote').textContent = CARE[c][1] + '. На брелоке меняется только через панель.';
+};
+CARE.forEach(([name], i) => {
+  const b = document.createElement('button');
+  b.textContent = name;
+  b.onclick = () => { M._sim_set_care(i); store.set('keypet.care', String(i)); showCare(); };
+  careEl.append(b);
+});
+M._sim_set_care(+(store.get('keypet.care') || 1));
+showCare();
+
+/* the sleep timer and waking by motion: the same choices as the panel's (power s, feat 9) */
+const POWER = [[15, '15 с'], [30, '30 с'], [60, '1 мин'], [120, '2 мин'], [300, '5 мин'], [0, 'Никогда']];
+const F_WAKE = 9; /* PIP_F_WAKE */
+const powerEl = document.getElementById('power'), wakeBtn = document.getElementById('shakewake');
+const showPower = () => {
+  const p = M._sim_power_after(), w = M._sim_feature_on(F_WAKE);
+  [...powerEl.children].forEach((b, k) => b.classList.toggle('on', POWER[k][0] === p));
+  wakeBtn.classList.toggle('on', !!w);
+  document.getElementById('powerNote').textContent = (p ? 'Экран тускнеет, потом гаснет. ' : 'Экран не гаснет сам. ')
+    + 'Будят касание, кнопка, уведомление' + (w ? ' и движение: тряска или наклон' : '') + '. Музыка сон не держит.';
+};
+POWER.forEach(([v, name]) => {
+  const b = document.createElement('button');
+  b.textContent = name;
+  b.onclick = () => { M._sim_power(v); store.set('keypet.power', String(v)); showPower(); };
+  powerEl.append(b);
+});
+wakeBtn.onclick = () => { const on = !M._sim_feature_on(F_WAKE); M._sim_feature(F_WAKE, on); store.set('keypet.shakewake', on ? '1' : '0'); showPower(); };
+const savedPower = +(store.get('keypet.power') ?? 30);
+M._sim_power(POWER.some(([v]) => v === savedPower) ? savedPower : 30);
+M._sim_feature(F_WAKE, store.get('keypet.shakewake') !== '0');
+showPower();
+
+document.querySelectorAll('#phone button, #android button').forEach((b) => (b.onclick = () => M._sim_phone(b.dataset.k.charCodeAt(0), +b.dataset.a)));
+const clockLost = document.getElementById('clockLost'), clockSync = document.getElementById('clockSync');
+/* the keychain says whether it knows the time (a phone or the panel told it since power-on): forget it, or tell it */
+clockLost.onclick = () => M._sim_clock_known(0);
+clockSync.onclick = () => M._sim_clock_known(1);
+/* back to the wall clock after +1 час / ×60...: the speed to ×1 and the offset to nothing. Ahead of it, his memory of
+   times moves back with the clock (sim_time_rebase): what he lived stays lived, nothing stands still until the old
+   clock comes round. Behind it (the keychain was off a while) the clock just catches up, and he lives that time */
+const clockReal = document.getElementById('clockReal');
+clockReal.onclick = () => {
+  const back = clockOffset > 0;
+  clockOffset = 0, timeSpeed = 1, batLast = Math.min(batLast, simNow()), offAt = Math.min(offAt, simNow());
+  for (const o of document.querySelectorAll('#speeds [data-speed]')) o.classList.toggle('on', o.dataset.speed === '1');
+  if (back) M._sim_time_rebase(simNow());
+  M._sim_time(simNow(), TZ);
+  store.set('keypet.clockOffset', '0');
+};
+
+/* the owner's birthday, as the panel's "Дни рождения" sets it (kept like the theme; off as after a flash) */
+const BD_MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+const bdD = document.getElementById('bdD'), bdM = document.getElementById('bdM'), bdOn = document.getElementById('bdOn');
+for (let d = 1; d <= 31; d++) bdD.add(new Option(d, d));
+BD_MONTHS.forEach((m, i) => bdM.add(new Option(m, i + 1)));
+function bdSet(d, m) { /* 0 0: off */
+  M._sim_birthday(d, m);
+  store.set('keypet.bday', d ? `${d}.${m}` : '');
+  if (d) bdD.value = d, bdM.value = m;
+  bdOn.textContent = d ? 'Включено' : 'Выключено';
+  bdOn.classList.toggle('on', !!d);
+}
+bdD.onchange = bdM.onchange = () => bdSet(+bdD.value, +bdM.value);
+bdOn.onclick = () => bdSet(bdOn.classList.contains('on') ? 0 : +bdD.value, +bdM.value);
+{ const [d, m] = (store.get('keypet.bday') || '').split('.').map(Number); bdSet(d > 0 ? d : 0, d > 0 ? m : 0); }
+const androidLog = document.getElementById('androidlog');
+
+/* ---------- the battery and the USB-C cable: it drains, it charges, at nothing the keychain switches off ----------
+   As on the board: the cable in powers it up (the power chip starts on USB power); with charge left the top key does;
+   switched off, his clock stops (the pet's made-up clock goes on from where it was) and the real time is lost until a
+   phone or the panel tells it (the clock app says so). */
+const BAT_DRAIN_LIT = 12, BAT_DRAIN_DARK = 1.5; /* %/h: screen lit, screen asleep */
+const BAT_FAST = 60, BAT_SLOW = 20;              /* %/h charging: to 80%, then the slow top-up */
+let batPct = Math.max(0, Math.min(100, +(store.get('keypet.bat') ?? 82)));
+let cableIn = store.get('keypet.cable') === '1', poweredOff = false, offAt = 0, batLast = simNow(), batSent = '', cableT = cableIn ? 1 : 0;
+const batEl = document.getElementById('batpct'), batLog = document.getElementById('batlog'), cableBtn = document.getElementById('cable');
+
+/* the port on the bottom edge and the cable: a plug that slides in, a lead hanging off it */
+const cableParts = [];
+const rubber = new THREE.MeshPhysicalMaterial({ color: 0xe4e5e9, roughness: 0.55, metalness: 0 }); /* a white USB-C lead */
+const port = new THREE.Mesh(new THREE.BoxGeometry(9, 1.2, 3.2), new THREE.MeshBasicMaterial({ color: 0x050506 }));
+port.position.set(0, -R + 0.45, -1.5);
+dev.add(port);
+const cable = new THREE.Group();
+const housing = new THREE.Mesh(new THREE.BoxGeometry(12, 22, 6.5), rubber);
+housing.position.y = -11;
+const tongue = new THREE.Mesh(new THREE.BoxGeometry(8.4, 6.5, 2.6), polished);
+tongue.position.y = 3.25; /* inside the case when plugged in */
+const lead = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([
+  new THREE.Vector3(0, -22, 0), new THREE.Vector3(0, -40, -1), new THREE.Vector3(8, -70, -10), new THREE.Vector3(22, -115, -24),
+  new THREE.Vector3(30, -170, -30)]), 48, 1.8, 10), rubber);
+cable.add(housing, tongue, lead);
+cableParts.push(housing, tongue, lead);
+dev.add(cable);
+const batTag = document.getElementById('batTag');
+function placeCable() { cable.position.set(0, -R - (1 - cableT) * 16, -1.5); } /* 16 mm out when unplugged */
+placeCable();
+
+function setCable(on) {
+  if (on === cableIn) return;
+  cableIn = on;
+  showCable();
+  if (on && poweredOff) powerOn(); /* USB power starts the power chip */
+  batSent = '';
+}
+/* two buttons, one lit: which way the cable is */
+const cableOffBtn = document.getElementById('cableOff');
+function showCable() { cableBtn.classList.toggle('on', cableIn); cableOffBtn.classList.toggle('on', !cableIn); }
+cableBtn.onclick = () => setCable(true);
+cableOffBtn.onclick = () => setCable(false);
+showCable();
+batEl.value = Math.round(batPct);
+batEl.oninput = () => { batPct = +batEl.value; batSent = ''; if (batPct <= 0 && !cableIn && !poweredOff) powerOff(true); };
+
+let relink = ''; /* the phone that was linked when it went flat: it comes back by itself once the keychain is on */
+function powerOff(flat) { /* flat: it ran flat just now (as the board's EMPTY_MV): it costs him, and he wakes angry */
+  if (flat) M._sim_drained(), store.set('keypet.drained', '1');
+  savePet();
+  const l = M.UTF8ToString(M._sim_link_report());
+  relink = l === 'link=iphone' ? 'L' : l === 'link=android' ? 'A' : '';
+  if (relink) M._sim_phone(relink.charCodeAt(0), 0); /* switched off: every Bluetooth link drops */
+  poweredOff = true, offAt = simNow();
+  if (touch) M._sim_touch(touch[0], touch[1], 0), touch = null;
+}
+function powerOn() {
+  if (!poweredOff) return;
+  clockOffset -= simNow() - offAt; /* switched off, his clock stood still */
+  poweredOff = false, batLast = simNow(), batSent = '';
+  M._sim_clock_known(0); /* the real time is lost until a phone or the panel tells it */
+  M._sim_time(simNow(), TZ);
+  if (store.get('keypet.drained') === '1') M._sim_drained_wake(), store.set('keypet.drained', '0'); /* the intro ends angry */
+  M._sim_wake_up();
+  if (relink) { const k = relink; relink = ''; setTimeout(() => { if (!poweredOff) M._sim_phone(k.charCodeAt(0), 2); }, 2500); } /* the phone finds it again: an iPhone brings the time */
+}
+function batStep(dt) {
+  const now = simNow(), h = Math.max(0, now - batLast) / 3600;
+  batLast = now;
+  if (cableIn) {
+    const fast = Math.max(0, Math.min(h, (80 - batPct) / BAT_FAST)); /* fast to 80%, slow after */
+    batPct = Math.min(100, batPct + fast * BAT_FAST + (h - fast) * BAT_SLOW);
+  } else if (!poweredOff) {
+    batPct = Math.max(0, batPct - h * (M._sim_display_on() ? BAT_DRAIN_LIT : BAT_DRAIN_DARK));
+    if (batPct <= 0) powerOff(true);
+  }
+  cableT += ((cableIn ? 1 : 0) - cableT) * Math.min(1, dt * 12);
+  placeCable();
+  const pct = Math.round(batPct), key = pct + (cableIn ? '+' : '');
+  if (!poweredOff && key !== batSent) batSent = key, M._sim_battery(pct, cableIn ? 1 : 0);
+  if (document.activeElement !== batEl) batEl.value = pct;
+  const text = `${pct}%  ${poweredOff ? 'выключен — разряжен' : cableIn ? (pct >= 100 ? 'заряжен, кабель всё ещё в нём' : 'заряжается') : 'от батареи'}`;
+  if (batLog.textContent !== text) batLog.textContent = text;
+  const tag = poweredOff ? `${pct}% · выключен` : cableIn ? `${pct}% · заряжается` : `${pct}%`;
+  if (batTag.textContent !== tag) batTag.textContent = tag;
+  batTag.classList.toggle('charging', cableIn && !poweredOff);
+  batTag.classList.toggle('low', !cableIn && pct <= 15);
+}
+setInterval(() => { store.set('keypet.bat', batPct.toFixed(2)); store.set('keypet.cable', cableIn ? '1' : '0'); }, 3000);
+M._sim_battery(Math.round(batPct), cableIn ? 1 : 0);
+if (batPct <= 0 && !cableIn) powerOff();
+const phoneLog = document.getElementById('phonelog');
+let phoneLast = '';
+setInterval(() => { /* what the keychain asked the phone to do */
+  const last = M.UTF8ToString(M._sim_phone_last()), shots = M._sim_phone_shots();
+  const text = `брелок → iPhone: ${last || '—'}   снимков: ${shots}`;
+  if (text !== phoneLast) phoneLog.textContent = phoneLast = text;
+  const h = Object.fromEntries(M.UTF8ToString(M._sim_link_report()).split(' ').map(kv => kv.split('=')));
+  const known = M._sim_clock_is_known();
+  clockLost.classList.toggle('on', !known); clockSync.classList.toggle('on', !!known);
+  clockReal.disabled = Math.abs(clockOffset) < 1 && timeSpeed === 1; /* already on the real clock */
+  const atext = h.link === 'android' ? 'Android: подключён (только камера)' : 'Android: не подключён';
+  if (androidLog.textContent !== atext) androidLog.textContent = atext;
+  const ptext = h.link === 'android' ? 'брелок → iPhone: — (подключён Android)' : text;
+  if (phoneLog.textContent !== ptext) phoneLog.textContent = phoneLast = ptext;
+}, 200);
+
+const SCREENS = { pair: 'сопряжение', call: 'звонок', banner: 'уведомление', style: 'темы', tools: 'утилиты', settings: 'настройки', pip: 'Пип', menu: 'меню', stopwatch: 'секундомер', clock: 'часы', care: 'Пип: забота', timer: 'таймер',
+  torch: 'фонарик', ball: 'шарик', notify: 'уведомления', music: 'музыка', camera: 'камера', maze: 'лабиринт',
+  games: 'игры', xo: 'крестики-нолики', eight: 'шар предсказаний', coin: 'монетка', dice: 'кубик', noise: 'шумомер',
+  pong: 'пинг-понг', sound: 'звуки', eyes: 'глаза', bt: 'Bluetooth', privacy: 'приватность', phone: 'телефон', tired: 'Пип не может играть', timer_done: 'время вышло', '?': '—' };
+const NEEDS = [['food', 'Еда'], ['energy', 'Энергия'], ['fun', 'Веселье'], ['love', 'Внимание'], ['walk', 'Прогулки'], ['clean', 'Чистота'], ['trust', 'Доверие'], ['grudge', 'Обида'], ['dayMood', 'Настроение дня']];
+const needsEl = document.getElementById('needs');
+needsEl.innerHTML = NEEDS.map(([k, t]) => `<div class="need"><span>${t}</span><div class="bar" id="bar-${k}"><i></i></div><span class="val" id="val-${k}"></span></div>`).join('');
+document.getElementById('feed').onclick = () => M._sim_action(0);
+document.getElementById('play').onclick = () => M._sim_action(1);
+document.getElementById('wash').onclick = washHold;
+document.getElementById('soil').onclick = () => M._sim_set_clean(0.1);
+document.getElementById('rare').onclick = () => M._sim_rare(TZ);
+const autoBtn = document.getElementById('auto');
+autoBtn.onclick = () => M._sim_auto(1);
+for (const b of document.querySelectorAll('#speeds [data-speed]')) b.onclick = () => {
+  timeSpeed = +b.dataset.speed;
+  for (const o of document.querySelectorAll('#speeds [data-speed]')) o.classList.toggle('on', o === b);
+};
+document.getElementById('plus1').onclick = () => { clockOffset += 3600; };
+document.getElementById('plus5').onclick = () => { clockOffset += 5 * 3600; };
+document.getElementById('plus24').onclick = () => { clockOffset += 24 * 3600; };
+document.getElementById('newpet').onclick = () => {
+  if (!confirm('Начать с новым Пипом? Текущий забудется, а все настройки вернутся к тем, что после прошивки начисто.')) return;
+  /* as a clean flash: the pet and every setting this page keeps (theme, eyes, character, sleep timer, waking by motion, clock) */
+  resetting = true; /* from here on nothing of this page is saved: not the 3 s saves, not the battery's, not pagehide */
+  try {
+    for (const k of Object.keys(localStorage)) if (k.startsWith('keypet.')) localStorage.removeItem(k);
+    localStorage.setItem('keypet.gen', String(Date.now())); /* any other open tab sees it and reloads too */
+  } catch {}
+  location.reload();
+};
+const moodsEl = document.getElementById('moods'), filter = document.getElementById('filter');
+const ruSort = (a, b) => a.label.localeCompare(b.label, 'ru');
+/* the moods, and the animations that play over any of them (a sneeze): one list, in the alphabet's order */
+const ANIMS = [{ name: 'sneeze', label: 'чихание', run: () => { startAudio(); M._sim_key('z'.charCodeAt(0)); } },
+  { name: 'burp', label: 'отрыжка', run: () => { startAudio(); M._sim_key('x'.charCodeAt(0)); } }];
+[...Array(M._sim_mood_count()).keys()].map(i => { const name = M.UTF8ToString(M._sim_mood_name(i)); return { name, label: RU[name] || name, run: () => M._sim_set_mood(i) }; })
+  .concat(ANIMS).sort(ruSort).forEach(({ name, label, run }) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.title = ANIMS.some(a => a.name === name) ? name + ' (анимация поверх настроения)' : name;
+    b.dataset.mood = name;
+    b.onclick = run;
+    moodsEl.append(b);
+  });
+filter.oninput = () => {
+  const q = filter.value.trim().toLowerCase();
+  for (const b of moodsEl.children) b.hidden = q && !(b.textContent + ' ' + b.title).toLowerCase().includes(q);
+};
+addEventListener('keydown', e => { if (e.key.length === 1 && e.target !== filter) M._sim_key(e.key.charCodeAt(0)); });
+
+/* ---------- Pip's voice: an AudioContext pulling PCM from the wasm synth ---------- */
+const VOICE_RU = { poke: 'тычок', happy: 'радость', sad: 'грусть', growl: 'злость', oh: 'удивление', love: 'любовь', giggle: 'хихиканье',
+  nom: 'ест', burp: 'отрыжка', yawn: 'зевок', dizzy: 'кружится голова', derp: 'растрясли', hm: 'любопытство', censor: 'ругается', rant: 'безумная ругань',
+  alarm: 'таймер', hmph: 'недовольство', tick: 'щелчок меню', tock: 'барабан', sneeze: 'чих', ring: 'звонок',
+  whee: 'восторг', hum: 'напевает', pout: 'надулся', tada: 'гордость', think: 'раздумье',
+  birthday: 'с днём рождения', loop: 'кувырок', aww: 'растроган', peek: 'прятки', phew: 'облегчение', laugh: 'хохот', thanks: 'благодарность',
+  mmph: 'ммф! (сплющило)', boing: 'бои-оинг', eek: 'иик-иик', pinch: 'нннгх-ип!', yay: 'я-ай!', nuzzle: 'ласкается', oohooh: 'у-у-у!', yum: 'ням-ням',
+  fanfare: 'та-та-таа!', deflate: 'сдувается', squeak: 'скрип-скрип', groggy: 'мву-у?..',
+  wow: 'во-о-ау', twinkle: 'колокольчики', lala: 'ля-ля-ля', aria: 'соло', mwah: 'мм-чмок', smooch: 'чмок-чмок', heyyou: 'хе-эй', wink: 'дзинь', xylo: 'ксилофон', prism: 'а-о-и',
+  knock: 'тук-тук', popup: 'ба!', om: 'о-омм', bowl: 'поющая чаша', snore: 'храп', dreamsong: 'бормочет во сне', melt: 'тает', coo: 'воркует', claps: 'хлопки', bravo: 'браво',
+  bassline: 'бас', yeah: 'йе-а', whimper: 'у-у-у?', yip: 'тяф', flutter: 'трепет крыльев', hushed: 'затаил дыхание', blub: 'буль-буль', bubblepop: 'пок!', beepboop: 'бип-буп',
+  servo: 'сервопривод', purr: 'мррр', meow: 'мяу', blblbl: 'бл-бл-бл', yoyo: 'уа-уа', pfft: 'мф-мф', crackup: 'хохот', crackle: 'костёр', cozy: 'ммм, тепло', shooting: 'падающая звезда',
+  wish: 'желание', zap: 'бзуип', powerup: 'усиление', gulp: 'глып-глып', fillup: 'наполняется',
+  heehee: '«Хи-хи-хи» без остановки', wheeze: 'задыхается от смеха', rolling: 'смех перекатами', hoho: '«О-хо-хо» из живота',
+  boings: 'три пружинки «бо-инь»', yippee: '«Йип-пи-и!»', petals: 'шесть колокольчиков', springsong: 'весенняя песенка',
+  lubdub: 'сердце «бу-бум»', swoon: 'млеет: «а-а-ах»', rocketup: 'ракета и россыпь', oohaah: '«О-о-о… а-а-ах!»',
+  medalist: 'маленький марш', mhm: '«М-гм. М-гм!»', discobeat: '«Дум-ти, дум-ти»', groovy: '«Уа-уа» в такт',
+  eyepop: '«Хм?.. бво-оп!»', whoanelly: '«Во-о-у!»', ideaping: 'капли мыслей и «дзинь»', gotit: '«Хм… а! А-га!»',
+  peekshy: '«Ми?.. мм!.. ми-хи»', bashful: 'тает от смущения', helloo: '«При-ви-ет!»', yoohoo: '«Ю-ху-у!»', royal: 'трубы', harrumph: '«Кхм… м-м»',
+  halosong: 'хор из одного', whistling: 'насвистывает', mwahaha: '«Муа-ха-ха» понарошку', teehee: '«Хи… хи-хи»',
+  hopla: '«Хоп, хоп, хоп-ля!»', circus: 'цирк', liftoff: 'плывёт вверх', popfall: '«Пок!» — и хохот', lick: '«Ляп… ммм!»', freeze: '«А-й-й!.. фух»',
+  pitter: 'капли по зонту', dryhum: 'напевает под дождём', heave: '«Ннн… ХОП!»', strong: '«Уф… та-да!»',
+  abracadabra: '«Абра-кадабра… пуф»', rabbit: '«А-вуаля!»', dawn: 'встаёт солнце', stretch: 'потягивается',
+  baa: '«Бе-е-е»', counting: '«Раз… два… тр…» и зевок', hiya: '«Ки-я!»', shadow: 'крадётся, и гонг', growing: 'растёт', blossom: 'распустился',
+  greysigh: 'серый вздох', drizzle: 'капли в миноре', bawl: '«У-а-а-а!»', sobs: 'всхлипывает',
+  cracked: '«Крак…» и вниз по ступенькам', letgo: 'дрожащее «а-ах»', kettle: 'закипает чайник', grrmph: '«Грр… мпф!»',
+  smoulder: 'тлеет и вспыхивает', roarlet: 'маленький рык', hmff: '«Хмф!»', nyeh: '«Нье-е-е»', teeth: 'стучит зубами', booo: 'привидение: «у-у-у»',
+  emptywind: 'ветер в пустоте', meh: '«Ме-ех»', powerdown: 'выключается', lowbeep: '«Бип… бип… бу-уп»',
+  rumble: 'урчит живот', nocookie: '«О-оо!.. ох…»', birdies: 'птички кружат', kaput: '«Бо-ньк… у-у-о»',
+  lovesmenot: '«Любит… не любит…»', fading: 'шкатулка затихает', sniffle: '«Шмыг… шмыг»', achoolet: 'тихое «пчи»',
+  popfull: '«пок — ах» и колокольчик', chargedup: 'вилка выходит, «м-м»', yank: '«пок — э?!»', notfull: '«бип-бип… ух»',
+  powerfail: 'выключается', feeble: 'слабое «м… мм»', retch: 'рыга',
+  skylit: 'звёздное небо', heart: 'сердце', riser: 'нарастание', grand: 'тема рождения', anthem: 'тема, радостно' };
+let audioCtx = null;
+function startAudio() {
+  if (audioCtx) { if (audioCtx.state === 'suspended') audioCtx.resume(); return; }
+  audioCtx = new AudioContext();
+  M._sim_voice_init(audioCtx.sampleRate);
+  const node = audioCtx.createScriptProcessor(1024, 0, 1);
+  node.onaudioprocess = e => {
+    const out = e.outputBuffer.getChannelData(0);
+    const pcm = new Int16Array(M.HEAPU16.buffer, M._sim_audio(out.length), out.length);
+    for (let i = 0; i < out.length; i++) out[i] = pcm[i] / 32768;
+  };
+  node.connect(audioCtx.destination);
+  document.getElementById('audio-note').textContent = 'Звук идёт в динамики компьютера. На брелоке — встроенный динамик.';
+}
+addEventListener('pointerdown', startAudio);
+addEventListener('keydown', startAudio);
+const voicesEl = document.getElementById('voices');
+[...Array(M._sim_voice_count()).keys()].map(i => { const name = M.UTF8ToString(M._sim_voice_name(i)); return { i, label: VOICE_RU[name] || name }; })
+  .sort(ruSort).forEach(({ i, label }) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.onclick = () => { startAudio(); M._sim_say(i); };
+    voicesEl.append(b);
+  });
+/* the computer's microphone into Pip's ears (the board's mic path: mic.c), 20 ms or so at a time */
+const micBtn = document.getElementById('mic'), micNote = document.getElementById('mic-note');
+let micStream = null, micSrc = null, micNode = null;
+function micOff() {
+  micStream.getTracks().forEach(t => t.stop());
+  micSrc.disconnect(); micNode.disconnect();
+  micStream = micSrc = micNode = null;
+  M._sim_mic_stop();
+  micBtn.textContent = 'Включить микрофон'; micBtn.classList.remove('on');
+}
+micBtn.onclick = async () => {
+  startAudio();
+  if (micStream) { micOff(); return; }
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+  } catch (e) {
+    micNote.textContent = 'Нет доступа к микрофону: ' + (e.message || e.name) + '. Разрешите его в адресной строке браузера.';
+    return;
+  }
+  micSrc = audioCtx.createMediaStreamSource(micStream);
+  micNode = audioCtx.createScriptProcessor(1024, 1, 1);
+  micNode.onaudioprocess = ev => {
+    const x = ev.inputBuffer.getChannelData(0), pcm = new Int16Array(M.HEAPU16.buffer, M._sim_mic_buf(), x.length);
+    for (let i = 0; i < x.length; i++) pcm[i] = Math.max(-32768, Math.min(32767, x[i] * 32767));
+    M._sim_mic_feed(x.length, audioCtx.sampleRate);
+  };
+  micSrc.connect(micNode); micNode.connect(audioCtx.destination); /* the node only runs connected; it outputs silence */
+  micStream.getTracks()[0].onended = () => micStream && micOff(); /* unplugged */
+  micBtn.textContent = 'Выключить микрофон'; micBtn.classList.add('on');
+  micNote.textContent = 'Микрофон: ' + (micStream.getTracks()[0].label || 'включён') + '. Хлопни или подуй на него.';
+};
+const muteBtn = document.getElementById('mute');
+muteBtn.onclick = () => M._sim_volume(M._sim_get_volume() > 0 ? 0 : 0.8);
+
+/* ---------- main loop ---------- */
+const readout = document.getElementById('readout'), moodEl = document.getElementById('mood'), reactEl = document.getElementById('reaction');
+const accel = new THREE.Vector3(), qInv = new THREE.Quaternion();
+let last = performance.now(), msCarry = 0, wasmMs = 0, fps = 60, statusAt = 0;
+
+function tick(now) {
+  const dt = Math.min((now - last) / 1000, 0.1);
+  last = now;
+  simTime += dt;
+  const k = 1 - Math.exp(-dt * 10);
+  for (const a of ['pitch', 'yaw', 'roll']) cur[a] += (tgt[a] - cur[a]) * k;
+
+  // shaking and walking: visible motion plus the matching linear acceleration
+  const env = Math.min(shakeLeft, 0.4) / 0.4;
+  shakeLeft = Math.max(0, shakeLeft - dt);
+  const sh = Math.sin(simTime * 2 * Math.PI * 7) * env;
+  const wb = walking ? Math.sin(simTime * 2 * Math.PI * 1.8) : 0;
+  dev.rotation.set(cur.pitch, cur.yaw, cur.roll + sh * 0.22, 'YXZ');
+  dev.position.set(sh * 4, wb * 2.5, 0);
+  dev.updateMatrixWorld();
+
+  // accelerometer reads "up" (1 g) plus linear acceleration, in device axes
+  accel.set(0, 1 + 0.35 * wb, 0).applyQuaternion(qInv.copy(dev.quaternion).invert());
+  accel.x += 2.5 * sh;
+  /* thrown: a shove of ~3 g sideways, then the free fall; dropped: the free fall alone (the accelerometer reads ~0) */
+  if (pushLeft > 0) {
+    accel.x += 3.2;
+    dev.position.x += 10 * (1 - pushLeft / PUSH_S);
+    if ((pushLeft -= dt) <= 0) pushLeft = 0, fallLeft = FALL_S;
+  } else if (fallLeft > 0) {
+    accel.set(0, 0, 0);
+    const k = 1 - fallLeft / FALL_S;
+    dev.position.y -= 18 * k * k;
+    if ((fallLeft -= dt) <= 0) fallLeft = 0;
+  }
+  msCarry += dt * 1000;
+  const ms = Math.floor(msCarry);
+  msCarry -= ms;
+  clockOffset += dt * (timeSpeed - 1);
+  batStep(dt);
+  if (!poweredOff) {
+    M._sim_imu(accel.x, accel.y, accel.z, dt);
+    M._sim_time(simNow(), TZ);
+    const t0 = performance.now();
+    M._sim_frame(ms);
+    wasmMs += (performance.now() - t0 - wasmMs) * 0.05;
+  }
+  fps += (1 / Math.max(dt, 1e-3) - fps) * 0.05;
+  blitScreen();
+  screenTex.needsUpdate = true;
+
+  camera.position.set(0, camDist * 0.16, camDist);
+  camera.lookAt(0, 0, 0);
+  renderer.render(scene, camera);
+
+  if (now - statusAt > 100) {
+    statusAt = now;
+    const st = JSON.parse(M.UTF8ToString(M._sim_status()));
+    moodEl.textContent = RU[st.mood] || st.mood;
+    reactEl.textContent = st.reaction ? '↳ ' + (RU[st.reaction] || st.reaction) : '';
+    for (const b of moodsEl.children) b.classList.toggle('cur', b.dataset.mood === st.mood);
+    autoBtn.classList.toggle('on', st.auto);
+    const on = M._sim_get_volume() > 0;
+    muteBtn.classList.toggle('on', on);
+    muteBtn.textContent = on ? 'Звук включён' : 'Звук выключен';
+    for (const [k] of NEEDS) {
+      const v = st[k], frac = k === 'dayMood' ? (v + 1) / 2 : v;
+      document.querySelector(`#bar-${k} > i`).style.width = (frac * 100).toFixed(1) + '%';
+      document.getElementById('bar-' + k).classList.toggle('low', frac < 0.25);
+      document.getElementById('val-' + k).textContent = k === 'dayMood' ? (v >= 0 ? '+' : '') + v.toFixed(2) : Math.round(v * 100) + '%';
+    }
+    const pipNow = new Date(simNow() * 1000);
+    const clock = pipNow.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' }).replace(' г.', '') +
+      ', ' + pipNow.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    document.getElementById('petinfo').textContent =
+      `время Пипа  ${clock}${timeSpeed > 1 ? '  (×' + timeSpeed + ')' : ''}\n` +
+      `часы        ${M._sim_clock_is_known() ? 'синхронизированы' : 'не синхронизированы'}\n` +
+      `возраст     ${st.days} ${st.days % 100 >= 11 && st.days % 100 <= 14 ? 'дней' : st.days % 10 === 1 ? 'день' : st.days % 10 >= 2 && st.days % 10 <= 4 ? 'дня' : 'дней'}\n` +
+      `состояние   ${st.asleep ? 'спит' : 'не спит'}, ${RU[st.mood] || st.mood}${st.auto ? '' : ' (выбрано вручную)'}\n` +
+      `экран       ${SCREENS[st.screen] || st.screen}`;
+    const f = v => (v >= 0 ? ' ' : '') + v.toFixed(2);
+    readout.textContent =
+      `акселерометр  x${f(accel.x)}  y${f(accel.y)}  z${f(accel.z)} g\n` +
+      `наклон        x${f(st.tilt[0])}  y${f(st.tilt[1])}\n` +
+      `тряска        ${st.shake.toFixed(2)} g   экраном вниз: ${st.faceDown ? 'да' : 'нет'}\n` +
+      `шаги          ${st.steps}\n` +
+      `кадр          ${wasmMs.toFixed(2)} мс (wasm)   ${fps.toFixed(0)} к/с`;
+  }
+}
+const frame = now => { tick(now); requestAnimationFrame(frame); };
+requestAnimationFrame(frame);
+requestAnimationFrame(() => requestAnimationFrame(hideLoader)); /* the first frames are drawn: the loading screen goes */
+setTimeout(hideLoader, 300); /* a tab in the background, where frames do not come */
+// console/testing hook: run the sim for `secs` without waiting for the browser (works in a hidden tab)
+const advance = secs => { for (let t = 0; t < secs; t += 1 / 60) tick(last + 1000 / 60); };
+window.sim = { M, tgt, cur, dev, advance };
+</script>
+</body>
+</html>
