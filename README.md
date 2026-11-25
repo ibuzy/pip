@@ -2,7 +2,7 @@
   <img src="docs/guide/hero.webp" width="180" alt="Пип">
 </p>
 
-<h1 align="center">Пип — питомец в брелоке</h1>
+<h1 align="center">Пип — карманный питомец</h1>
 
 <p align="center">
   Живой характер на круглом AMOLED-экране: смотрит на тебя, радуется, обижается, засыпает,<br>
