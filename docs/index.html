@@ -1,0 +1,2403 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Пип — панель</title>
+<!-- ?v= changes with the picture: browsers keep a favicon by its address -->
+<link rel="icon" href="favicon.svg?v=curious" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=curious">
+<meta name="theme-color" content="#060607">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+/* The keychain's world: AMOLED black, the Стандартная orange. A header with the link, a live Pip that wears the chosen
+   eyes, then tabs; settings are things you can see (eye balls, theme tiles, chips) rather than drop-downs.
+   Everything that talks to the board is disabled (and says why) until Pip is linked. */
+:root{
+  --bg:#060607; --bg2:#0d0d10; --card:#131317; --card2:#1a1a1f; --line:#25252c; --line2:#34343d;
+  --text:#f3f1ec; --dim:#9a978f; --faint:#6b6962;
+  --acc:#ff6a2b; --acc2:#ff9a3d; --accbg:rgba(255,106,43,.12); --good:#30d158; --bad:#ff453a;
+  --r:20px; --r2:14px;
+  --sans:"Manrope",-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"SF Mono",Consolas,monospace;
+  --pupil:#1c1c1c; --white:#ffffff;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font:15px/1.5 var(--sans);-webkit-font-smoothing:antialiased;min-height:100vh;
+  background-image:radial-gradient(900px 500px at 85% -10%,rgba(255,106,43,.10),transparent 60%),radial-gradient(700px 500px at -10% 10%,rgba(120,90,255,.06),transparent 60%)}
+/* the simulator's backdrop: a faint dot grid (the Ретро theme's) behind everything, fixed to the screen, clear in the
+   middle where the cards are and showing towards the edges */
+body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background-image:radial-gradient(rgba(255,255,255,.085) 1px,transparent 1.3px);background-size:22px 22px;
+  -webkit-mask-image:radial-gradient(75% 70% at 50% 45%,transparent 25%,#000 100%);mask-image:radial-gradient(75% 70% at 50% 45%,transparent 25%,#000 100%)}
+/* no text selection by mouse: the page is an app, not a document (fields still select) */
+body{-webkit-user-select:none;user-select:none}
+input,textarea,[contenteditable]{-webkit-user-select:text;user-select:text}
+/* the loading screen: black with Pip's eyes blinking, over the page until it has laid itself out (the script builds
+   the settings, the fonts come in); then it fades away. Without the script it goes by itself after 6 s */
+#loader{position:fixed;inset:0;z-index:1000;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;
+  animation:ldgone .45s 6s forwards}
+@keyframes ldgone{to{opacity:0;visibility:hidden}}
+.ld-eyes{display:flex;gap:14px}
+.ld-eyes i{width:22px;height:30px;border-radius:44% 44% 46% 46%;background:var(--white);animation:ldblink 2.4s infinite}
+.ld-bar{width:72px;height:3px;border-radius:2px;background:var(--line);overflow:hidden;position:relative}
+.ld-bar:after{content:"";position:absolute;inset:0;width:40%;border-radius:2px;background:var(--acc);animation:ldrun 1.1s cubic-bezier(.4,0,.2,1) infinite}
+@keyframes ldblink{0%,42%,50%,100%{transform:scaleY(1)}46%{transform:scaleY(.1)}}
+@keyframes ldrun{from{transform:translateX(-100%)}to{transform:translateX(250%)}}
+/* linking: the port or Bluetooth is open, but the board has not told its settings (@C) and status (@S) yet - the panel
+   stays locked under this until they are in (linkStart / linkReady) */
+#linking{position:fixed;inset:0;z-index:900;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55);
+  -webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);opacity:0;visibility:hidden;transition:opacity .25s,visibility 0s .25s}
+.connecting #linking{opacity:1;visibility:visible;transition:opacity .25s}
+#linking .box{display:flex;flex-direction:column;align-items:center;gap:16px;padding:28px 36px;border-radius:24px;background:var(--card);
+  border:1px solid var(--line);box-shadow:0 30px 60px -25px #000;text-align:center;max-width:min(360px,calc(100vw - 48px))}
+#linking b{font:700 17px/1.3 var(--sans)}
+#linking small{color:var(--dim);font-size:13px;margin-top:-8px}
+.connecting .dot{background:var(--acc2);animation:ldpulse 1s ease-in-out infinite alternate}
+@keyframes ldpulse{to{opacity:.35}}
+.connecting .connect{display:none}
+a{color:var(--acc2)}
+code{font:500 13px var(--mono);background:var(--card2);padding:2px 6px;border-radius:6px}
+.wrap{max-width:1120px;margin:0 auto;padding:0 24px 72px}
+
+/* ---- header ---- */
+.top{display:flex;align-items:center;gap:16px;padding:20px 0;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:12px;margin-right:auto}
+.logo{width:40px;height:40px;border-radius:12px;background:#000;border:1px solid var(--line2);display:flex;align-items:center;justify-content:center;gap:5px}
+.logo i{width:8px;height:13px;border-radius:4px;background:var(--white);box-shadow:inset 0 0 0 0 var(--pupil)}
+.brand b{font:800 20px/1 var(--sans);letter-spacing:-.3px;display:block}
+.brand small{font-size:12px;color:var(--dim);font-weight:500}
+.pill{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:999px;background:var(--card);border:1px solid var(--line);font-weight:600;font-size:13px;white-space:nowrap}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--bad);flex:none}
+.linked .dot{background:var(--good);box-shadow:0 0 0 4px rgba(48,209,88,.18)}
+.connect{display:flex;gap:8px}
+.linked .connect{display:none}
+
+/* ---- buttons, inputs ---- */
+button{font:700 14px var(--sans);border-radius:12px;padding:0 18px;height:44px;border:1px solid var(--line2);background:var(--card2);color:var(--text);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:background .15s,border-color .15s,transform .1s,filter .15s}
+button:hover{border-color:var(--faint)}
+button:active{transform:scale(.98)}
+button.main{background:linear-gradient(180deg,var(--acc2),var(--acc));border-color:transparent;color:#140800;box-shadow:0 6px 20px -8px rgba(255,106,43,.7)}
+button.main:hover{filter:brightness(1.07)}
+button.ghost{background:transparent}
+button:disabled{opacity:.5;cursor:not-allowed;transform:none;background:var(--card2);border-color:var(--line);color:var(--faint);box-shadow:none;filter:none}
+button.danger{border-color:rgba(255,69,58,.45);color:#ff8a82;background:rgba(255,69,58,.08)}
+button.danger:hover{border-color:var(--bad)}
+button svg{width:18px;height:18px;flex:none}
+:focus-visible{outline:2px solid var(--acc2);outline-offset:2px}
+
+/* ---- hero: Pip and his numbers ---- */
+.hero{display:grid;grid-template-columns:auto minmax(0,1fr);gap:32px;align-items:center;background:linear-gradient(180deg,var(--card),var(--bg2));border:1px solid var(--line);border-radius:28px;padding:28px 32px;margin-bottom:20px;position:relative;overflow:hidden}
+.screen{width:188px;aspect-ratio:1;border-radius:50%;background:#000;display:grid;place-items:center;position:relative;
+  box-shadow:0 0 0 7px #1b1b20,0 0 0 8px var(--line2),0 30px 60px -25px #000,inset 0 0 30px rgba(255,255,255,.03)}
+.eyes{display:flex;gap:22px;align-items:center}
+.eyes i{position:relative;width:46px;height:60px;border-radius:44% 44% 46% 46%;background:var(--white);transition:height .45s,transform .45s,opacity .45s,background .3s;animation:blink 6s infinite;overflow:hidden}
+.eyes i:after{content:"";position:absolute;width:44%;height:46%;left:42%;top:30%;border-radius:50%;background:var(--pupil);transition:background .3s}
+body:not(.linked) .eyes i{height:10px;opacity:.5;transform:translateY(12px);animation:none}
+body:not(.linked) .eyes i:after{opacity:0}
+@keyframes blink{0%,93%,100%{transform:scaleY(1)}96%{transform:scaleY(.08)}}
+.hero h1{font:800 30px/1.15 var(--sans);letter-spacing:-.6px;margin:0 0 6px;text-wrap:balance}
+.hero p{margin:0 0 18px;color:var(--dim);max-width:52ch}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.stat{background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:var(--r2);padding:12px 14px;min-width:0}
+.stat span{display:block;font-size:12px;color:var(--dim);font-weight:600}
+.stat b{display:block;font-size:17px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+
+/* ---- tabs ---- */
+.tabs{display:inline-flex;gap:4px;padding:4px;background:var(--card);border:1px solid var(--line);border-radius:14px;margin:0 0 20px;max-width:100%;overflow-x:auto}
+.tabs::-webkit-scrollbar{display:none}.tabs{scrollbar-width:none}
+.tabs button{height:38px;border:0;background:transparent;color:var(--dim);border-radius:10px;padding:0 16px;white-space:nowrap}
+.tabs button:hover{color:var(--text)}
+.tabs button.on{background:var(--card2);color:var(--text);box-shadow:0 1px 0 rgba(255,255,255,.06) inset,0 4px 12px -6px #000}
+
+/* ---- cards ---- */
+.notice{display:flex;gap:12px;align-items:flex-start;border:1px solid rgba(255,106,43,.35);background:var(--accbg);color:#ffd2bd;border-radius:var(--r2);padding:14px 16px;margin:0 0 16px}
+.notice svg{width:20px;height:20px;flex:none;margin-top:1px;color:var(--acc2)}
+.notice.warn{border-color:rgba(255,69,58,.4);background:rgba(255,69,58,.1);color:#ffc0bb}
+.cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.wide{grid-column:1/-1}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:22px;display:flex;flex-direction:column;gap:16px;min-width:0}
+.card-h{display:flex;align-items:center;gap:12px}
+.card-h.fold{width:100%;background:none;border:0;padding:0;margin:0;font:inherit;color:inherit;text-align:left;cursor:pointer}
+.card-h.fold>div:nth-child(2){flex:1}
+.card-h.fold .chev{width:22px;height:22px;flex:none;color:var(--dim);transition:transform .2s}
+.card-h.fold[aria-expanded="true"] .chev{transform:rotate(180deg)}
+.ic{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;background:var(--accbg);color:var(--acc2);flex:none}
+.ic svg{width:19px;height:19px}
+.card h2{font:700 16px/1.2 var(--sans);margin:0}
+.card-h p{margin:2px 0 0;font-size:13px;color:var(--dim)}
+.muted{color:var(--dim);font-size:13px;margin:0}
+/* licences: a list of what is used, by whom, under what */
+.lic{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.lic li{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 0;border-top:1px solid var(--line)}
+.lic li:first-child{border-top:0;padding-top:2px}
+.lic li>div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.lic-n{font-weight:700;font-size:14px;color:var(--text);text-decoration:none}
+.lic-n:hover{color:var(--acc2)}
+.lic li span{font-size:13px;color:var(--dim)}
+.lic li small{font-size:11.5px;color:var(--faint)}
+.lic em{font-style:normal;flex:none;font:600 11.5px var(--mono);padding:4px 10px;border-radius:999px;background:var(--card2);border:1px solid var(--line2);color:var(--dim);white-space:nowrap}
+.lic em a{color:inherit;text-decoration:none}
+/* the two repositories as tiles: the whole tile is the link, an arrow in the corner */
+.repos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.repo{position:relative;display:flex;flex-direction:column;gap:3px;padding:16px 44px 16px 18px;border-radius:14px;background:var(--card2);
+  border:1px solid var(--line);color:var(--text);text-decoration:none;transition:border-color .15s,transform .15s,background .15s}
+.repo:hover{border-color:var(--acc);background:#1d1d23;transform:translateY(-1px)}
+.repo-tag{font:700 10.5px/1.4 var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--acc2)}
+.repo b{font-size:15.5px;line-height:1.3;overflow-wrap:anywhere}
+.repo b+span{font-size:13px;color:var(--dim)}
+.repo .go{position:absolute;top:16px;right:16px;width:18px;height:18px;color:var(--faint);transition:color .15s,transform .15s}
+.repo:hover .go{color:var(--acc2);transform:translate(2px,-2px)}
+@media (max-width:620px){.repos{grid-template-columns:1fr}}
+@media (max-width:520px){.lic li{flex-direction:column;align-items:flex-start;gap:8px}}
+.field>.lbl{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;font-weight:600;color:var(--text);margin:0 0 10px}
+.field>.lbl output{font:600 13px var(--mono);color:var(--acc2)}
+body:not(.linked) .needs-link,body.outdated .needs-link{opacity:.42;pointer-events:none;filter:saturate(.4)}
+body.outdated .tabs button:not([data-tab=flash]):not([data-tab=docs]):not([data-tab=lic]){opacity:.4;pointer-events:none}
+/* the update prompt */
+dialog{background:var(--card);color:var(--text);border:1px solid var(--line2);border-radius:24px;padding:28px;max-width:440px;width:calc(100% - 32px);box-shadow:0 30px 80px -20px #000}
+dialog::backdrop{background:rgba(0,0,0,.65);backdrop-filter:blur(4px)}
+dialog h2{font:800 22px/1.2 var(--sans);margin:14px 0 8px;letter-spacing:-.3px}
+dialog p{margin:0 0 10px;color:var(--dim)}
+dialog .vers{display:flex;align-items:center;gap:10px;margin:14px 0 18px;font:600 15px var(--mono)}
+dialog .vers span{padding:6px 12px;border-radius:10px;background:var(--card2);border:1px solid var(--line)}
+dialog .vers span.new{background:var(--accbg);border-color:rgba(255,106,43,.45);color:var(--acc2)}
+dialog .acts{display:flex;gap:10px;flex-wrap:wrap}
+dialog .acts button{flex:1}
+.ic.big{width:52px;height:52px;border-radius:16px}.ic.big svg{width:26px;height:26px}
+/* flashing: two ways, side by side */
+.modes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.mode{background:var(--card2);border:1px solid var(--line);border-radius:var(--r2);padding:18px;display:flex;flex-direction:column;gap:10px}
+.mode h3{margin:0;font:700 15px var(--sans)}
+.mode p{margin:0;flex:1}
+.mode.clean{border-color:rgba(255,69,58,.3)}
+.keep{display:inline-flex;align-items:center;gap:9px;font-size:12px;font-weight:700;color:var(--good)}
+.keep.no{color:#ff8a82}
+.keep i{font-style:normal;font-size:13px;line-height:1}
+.needs-link{transition:opacity .25s,filter .25s}
+
+/* eye colours: a round ball, the pupil's colour on the left, the white's on the right */
+.eyepick{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.eyepick button{flex-direction:column;gap:10px;height:auto;padding:16px 6px 12px;font-size:13px;font-weight:600;line-height:1.2;text-align:center;background:var(--card2);border-color:var(--line);position:relative}
+.ball{width:46px;height:46px;border-radius:50%;display:block;box-shadow:0 0 0 1px rgba(255,255,255,.12),0 8px 18px -8px #000;transition:transform .2s}
+.eyepick button:hover .ball{transform:scale(1.08)}
+.eyepick button.on{border-color:var(--acc);background:var(--accbg)}
+.eyepick button.on:after,.opt.on:after{content:"";position:absolute;top:8px;right:8px;width:18px;height:18px;border-radius:50%;background:var(--acc) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23140800' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center/12px no-repeat}
+
+/* theme tiles and privacy options: choices you can see */
+.opts{display:grid;gap:10px}
+.opts.three,.toggles.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.opt{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:4px;height:auto;padding:14px;text-align:left;background:var(--card2);border-color:var(--line);font-weight:700}
+.opt small{font-weight:500;color:var(--dim);font-size:12.5px;line-height:1.35}
+.opt.on{border-color:var(--acc);background:var(--accbg)}
+.swatch{display:flex;gap:4px;margin-bottom:6px}
+.swatch i{width:22px;height:22px;border-radius:7px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.1)}
+.opts.list .opt{padding-right:40px}
+.dots{display:flex;gap:4px;margin-bottom:6px}
+.dots i{width:18px;height:6px;border-radius:3px;background:var(--line2)}
+.dots i.on{background:var(--acc)}
+/* a second choice inside a card, under a thin rule (Болтливость under the character) */
+.subh{padding-top:16px;border-top:1px solid var(--line)}
+/* how much he talks: one to three speech bubbles, as the character's bars */
+.talk{display:flex;gap:4px;margin-bottom:6px}
+.talk svg{width:18px;height:16px;color:var(--line2)}
+.talk svg.on{color:var(--acc)}
+
+/* chips: the sleep timer */
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chips button{height:38px;border-radius:999px;padding:0 15px;font-size:13px;background:var(--card2);border-color:var(--line)}
+.chips button.on{background:var(--acc);border-color:var(--acc);color:#140800}
+
+/* slider */
+/* the input is as tall as a finger (the thumb is hit inside it), the 6 px track is drawn inside */
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:32px;margin:0;background:transparent;outline:none;
+  --track:linear-gradient(90deg,var(--acc) var(--p,78%),var(--line2) var(--p,78%))}
+input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:3px;background:var(--track)}
+input[type=range]::-moz-range-track{height:6px;border-radius:3px;background:var(--track)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;margin-top:-8px;border-radius:50%;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.5);cursor:pointer}
+input[type=range]::-moz-range-thumb{width:22px;height:22px;border:0;border-radius:50%;background:#fff;cursor:pointer}
+.range{display:flex;align-items:center;gap:12px;color:var(--faint)}
+.range svg{width:18px;height:18px;flex:none}
+
+/* switches */
+.toggles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.menuFoot{display:flex;justify-content:flex-end;margin-top:14px}
+.menuFoot button{height:38px;padding:0 16px}
+.menuFoot button:disabled{opacity:.4;cursor:default}
+#feats > .toggle:first-child{grid-column:1/-1} /* nine tiles: the first across, the birthday next to "Падения" */
+#feats{flex:1 1 auto;grid-auto-rows:auto;align-content:stretch} /* the tiles fill the card (the card beside sets its height); each row gives way down to its own size, not the tallest's */
+.bdayWrap{flex:none;display:grid;grid-template-rows:0fr;margin-top:-16px;transition:grid-template-rows .35s cubic-bezier(.2,.8,.2,1),margin-top .35s cubic-bezier(.2,.8,.2,1)}
+.bdayWrap.open{grid-template-rows:1fr;margin-top:0} /* the card's gap comes back with it */
+#feats .toggle{transition:padding .35s cubic-bezier(.2,.8,.2,1)}
+#feats{transition:gap .35s cubic-bezier(.2,.8,.2,1)}
+.card:has(.bdayWrap.open) #feats{gap:8px}
+.card:has(.bdayWrap.open) #feats .toggle{padding:9px 14px} /* the tiles give the date its room */
+.bdayWrap > div{overflow:hidden;min-height:0}
+.bdayPick{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:10px;padding:10px 14px;border-radius:var(--r2);background:var(--card2);border:1px solid var(--line)}
+.bdayPick label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--dim)}
+.bdayPick select{appearance:none;-webkit-appearance:none;width:100%;background:var(--bg2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%239a978f' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 12px center;color:var(--text);border:1px solid var(--line2);border-radius:10px;padding:8px 34px 8px 12px;font:600 14px/1.2 inherit;cursor:pointer;min-width:0}
+.bdayPick select:focus-visible{outline:2px solid var(--acc2);outline-offset:1px}
+
+.toggle{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:14px 16px;border-radius:var(--r2);background:var(--card2);border:1px solid var(--line)}
+.toggle b{display:block;font-weight:700;font-size:14px}
+.toggle small{display:block;color:var(--dim);font-size:12.5px;line-height:1.35;text-wrap:balance}
+.switch{position:relative;width:46px;height:28px;flex:none}
+.switch input{position:absolute;opacity:0;inset:-8px;margin:0;cursor:pointer;z-index:1} /* a 62 x 44 target for a finger */
+.switch span{position:absolute;inset:0;background:#3a3a42;border-radius:14px;transition:.2s;pointer-events:none}
+.switch span:before{content:"";position:absolute;width:22px;height:22px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s;box-shadow:0 2px 4px rgba(0,0,0,.4)}
+.switch input:checked+span{background:var(--good)}
+.switch input:checked+span:before{transform:translateX(18px)}
+.switch input:focus-visible+span{outline:2px solid var(--acc2);outline-offset:2px}
+
+/* flashing */
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;counter-reset:s;margin:0;padding:0;list-style:none}
+.steps li{background:var(--card2);border:1px solid var(--line);border-radius:var(--r2);padding:16px;counter-increment:s}
+.steps li:before{content:counter(s);display:grid;place-items:center;width:28px;height:28px;border-radius:9px;background:var(--accbg);color:var(--acc2);font:700 14px var(--mono);margin-bottom:10px}
+.steps li>b{display:block;margin-bottom:2px}
+.flashbox{display:grid;grid-template-columns:auto minmax(0,1fr);gap:20px;align-items:center}
+.bar{height:10px;background:var(--card2);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--acc),var(--acc2));transition:width .2s}
+details{background:var(--card2);border:1px solid var(--line);border-radius:var(--r2);padding:12px 16px}
+details summary{cursor:pointer;color:var(--text);font-weight:700}
+details p{margin:8px 0 0}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.saved{color:var(--good);font-size:13px;font-weight:600;opacity:0;transition:opacity .3s}
+/* the battery log: bars of the charge, the level on the right, the time under it (drawBat) */
+.batchart{position:relative;margin:14px 0 16px;height:220px;user-select:none}
+.batchart svg{display:block;width:100%;height:100%;overflow:visible}
+.batchart .grid{stroke:var(--line);stroke-width:1}
+.batchart .ax{fill:var(--faint);font:600 11px/1 inherit;font-variant-numeric:tabular-nums}
+.batchart .bar{fill:var(--good);pointer-events:none} /* the hover is the slot's (.hit under it): over the bar it flickered */
+.batchart .bar.low{fill:var(--bad)}
+.batchart .hit{fill:transparent;cursor:default}
+.batchart .hit:hover+.bar,.batchart .bar.on{filter:brightness(1.25)}
+.batchart.demo svg .bars{opacity:.28}
+.bat-tip{position:absolute;pointer-events:none;background:var(--card2);border:1px solid var(--line2);border-radius:10px;padding:8px 10px;font-size:12px;line-height:1.45;color:var(--dim);white-space:nowrap;box-shadow:0 6px 20px rgba(0,0,0,.45);z-index:2}
+.bat-tip b{color:var(--text);font-size:14px;font-variant-numeric:tabular-nums}
+.bat-note{position:absolute;left:50%;top:calc(50% - 11px);transform:translate(-50%,-50%);width:max-content;max-width:calc(100% - 80px);display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;padding:12px 18px;background:rgba(19,19,23,.88);border:1px solid var(--line2);border-radius:14px;backdrop-filter:blur(4px)}
+.bat-note b{font-size:15px;color:var(--text)}
+.bat-note b:empty{display:none}
+.bat-note span{font-size:13px;color:var(--dim);max-width:340px}
+.saved.show{opacity:1}
+
+/* the "saved" toast */
+.applybar{position:fixed;left:50%;bottom:20px;transform:translate(-50%,calc(100% + 30px));display:flex;align-items:center;gap:10px;max-width:calc(100% - 24px);
+  background:#1f1f25;border:1px solid var(--line2);border-radius:999px;padding:6px 6px 6px 18px;font-weight:700;font-size:13px;color:var(--text);
+  box-shadow:0 12px 30px -10px #000;transition:transform .3s cubic-bezier(.2,.8,.2,1);z-index:9}
+.applybar.show{transform:translate(-50%,0)}
+.applybar .adot{width:8px;height:8px;border-radius:50%;background:var(--acc);flex:none;box-shadow:0 0 0 4px var(--accbg)}
+.applybar button{height:36px;border-radius:999px;padding:0 16px;font-size:13px;white-space:nowrap}
+.applybar #applyText{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+body.pending{padding-bottom:84px} /* the bar never covers the last controls */
+body.pending .toast{bottom:84px}
+@media (max-width:520px){.applybar #applyText{display:none}.applybar{padding-left:14px}.applybar button{height:44px}
+  .bdayPick select{min-height:44px}} /* a finger's target on a phone */
+.toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,20px);opacity:0;pointer-events:none;background:#1f1f25;border:1px solid var(--line2);color:var(--text);border-radius:999px;padding:10px 18px;font-weight:700;font-size:13px;display:flex;gap:8px;align-items:center;box-shadow:0 12px 30px -10px #000;transition:.25s;z-index:10}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.toast i{width:8px;height:8px;border-radius:50%;background:var(--good)}
+.toast.bad i{background:var(--bad)}
+
+/* the menu editor: rows dragged by their grip, a block holds its apps; names edited in place */
+.menued{display:flex;flex-direction:column;gap:6px}
+.mlist{display:flex;flex-direction:column;gap:6px;min-height:8px}
+.mi,.mb>.mh{display:flex;align-items:center;gap:10px;padding:3px 6px 3px 2px;border-radius:var(--r2);background:var(--card2);border:1px solid var(--line);min-width:0}
+.mb{border:1px solid var(--line);border-radius:calc(var(--r2) + 4px);background:rgba(255,255,255,.02);padding:6px;display:flex;flex-direction:column;gap:6px}
+.mb>.mh{border-color:var(--line2);background:#202027}
+.mb>.mlist{gap:4px;padding:2px 0 2px 22px;min-height:40px;border-radius:var(--r2);position:relative}
+.mb>.mlist:empty:after{content:"Пусто — блок не виден на брелоке. Перетащи сюда приложения";display:flex;align-items:center;min-height:40px;padding:0 12px;border:1px dashed var(--line2);border-radius:var(--r2);color:var(--faint);font-size:12.5px}
+.grip{width:34px;height:34px;padding:0;flex:none;border:0;background:transparent;color:var(--faint);cursor:grab;touch-action:none;border-radius:9px}
+.grip:hover{color:var(--text);background:rgba(255,255,255,.05);border:0}
+.grip svg{width:16px;height:16px}
+.num{font:600 12px var(--mono);color:var(--faint);width:22px;flex:none;text-align:right}
+.mi input,.mh input{flex:1;min-width:0;height:32px;border:1px solid transparent;border-radius:9px;background:transparent;color:var(--text);font:600 14px var(--sans);padding:0 10px;outline:none;transition:border-color .15s,background .15s}
+.mh input{font-weight:800}
+.mi input:hover,.mh input:hover{border-color:var(--line2)}
+.mi input:focus,.mh input:focus{border-color:var(--acc);background:var(--bg2)}
+.mi input::placeholder,.mh input::placeholder{color:var(--faint)}
+.renamed input{color:var(--acc2)}
+.tag{font-size:11px;font-weight:700;color:var(--dim);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:2px 8px;flex:none}
+.undo{width:34px;height:34px;padding:0;flex:none;border:0;background:transparent;color:var(--faint);border-radius:9px;visibility:hidden}
+.undo:hover{color:var(--acc2);background:rgba(255,255,255,.05)}
+.undo svg{width:16px;height:16px}
+.renamed>.undo{visibility:visible}
+.dragging{position:fixed!important;z-index:20;pointer-events:none;box-shadow:0 18px 40px -12px #000,0 0 0 1px var(--acc);opacity:.95}
+.dragging .grip{cursor:grabbing}
+.ph{border:1px dashed var(--acc);background:var(--accbg);border-radius:var(--r2);flex:none}
+body.menu-drag,body.menu-drag *{cursor:grabbing!important;user-select:none}
+.toggle.span{grid-column:1/-1}
+/* the sound levels: a stepped slider each, 0 (off) .. 5, a tick under every step */
+.vols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.vol{display:flex;flex-direction:column;padding:14px 16px 10px;border-radius:var(--r2);background:var(--card2);border:1px solid var(--line)}
+.vol .lbl{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.vol .lbl b{display:block;font-weight:700;font-size:14px}
+.vol .lbl small{display:block;color:var(--dim);font-size:12.5px;line-height:1.35}
+.vol output{font:600 13px var(--mono);color:var(--acc2);white-space:nowrap}
+.vol output.off{color:var(--dim)}
+.vol .range{margin-top:auto;padding-top:6px} /* the cards stretch alike: the sliders line up whatever the captions */
+.ticks{display:flex;justify-content:space-between;margin:5px 40px 0;height:6px} /* under a slider with an icon each side: 40 + half a 2 px tick = the thumb's centre at each end; 5 px under the 22 px thumb, clear of it and its shadow */
+.ticks i{width:2px;height:6px;border-radius:1px;background:var(--line2)}
+.toggle.off>*,.field.off>*{opacity:.45} /* the children: the hint over it stays bright */
+.toggle.off .switch input{cursor:not-allowed}
+/* a plain tick box with its words (under the brightness slider) */
+.check{display:flex;align-items:flex-start;gap:12px;cursor:pointer;font-size:13px;line-height:1.35}
+.check input{appearance:none;-webkit-appearance:none;flex:none;width:20px;height:20px;margin:0;border-radius:6px;border:1.5px solid var(--line2);background:var(--card2);cursor:pointer;transition:background .15s,border-color .15s}
+.check input:checked{background:var(--acc) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23140800' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center/14px no-repeat;border-color:var(--acc)}
+.check b{display:block;font-weight:600;color:var(--text)}
+.check small{display:block;color:var(--dim);font-size:12.5px}
+/* why a control is locked: a hint over it on hover (or a tap, which focuses it) */
+[data-tip]{position:relative}
+[data-tip]:after{content:attr(data-tip);position:absolute;left:50%;bottom:calc(100% + 8px);transform:translate(-50%,4px);width:max-content;max-width:min(280px,80vw);
+  padding:8px 12px;border-radius:10px;background:#26262d;border:1px solid var(--line2);color:var(--text);font:600 12.5px/1.35 var(--sans);text-align:center;
+  box-shadow:0 10px 24px -8px #000;opacity:0;pointer-events:none;transition:opacity .15s,transform .15s;z-index:5}
+[data-tip]:hover:after,[data-tip]:focus-within:after{opacity:1;transform:translate(-50%,0)}
+input[type=range]:disabled{cursor:not-allowed;--track:var(--line2)}
+input[type=range]:disabled::-webkit-slider-thumb{background:#8a8a92;cursor:not-allowed}
+input[type=range]:disabled::-moz-range-thumb{background:#8a8a92;cursor:not-allowed}
+
+/* ---- documentation: a contents column that stays in view, sections as cards, the keychain's screen as round shots ---- */
+.doc{display:grid;grid-template-columns:200px minmax(0,1fr);gap:24px;align-items:start}
+.toc{position:sticky;top:16px;display:flex;flex-direction:column;gap:2px;padding:14px;background:var(--card);border:1px solid var(--line);border-radius:var(--r)}
+.toc b{font:800 13px var(--sans);color:var(--dim);text-transform:uppercase;letter-spacing:.6px;padding:4px 10px 8px}
+.toc a{color:var(--dim);text-decoration:none;font-weight:600;font-size:14px;padding:7px 10px;border-radius:10px;transition:background .15s,color .15s}
+.toc a:hover{color:var(--text);background:rgba(255,255,255,.04)}
+.toc a.on{color:var(--text);background:var(--accbg);box-shadow:inset 3px 0 0 var(--acc)}
+.dbody{display:flex;flex-direction:column;gap:16px;min-width:0}
+.dsec{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:26px 28px;scroll-margin-top:16px;min-width:0}
+.dsec h2{font:800 24px/1.2 var(--sans);letter-spacing:-.4px;margin:4px 0 12px}
+.dsec h3{font:700 16px/1.3 var(--sans);margin:22px 0 10px}
+.dsec p{margin:0 0 12px;color:#d6d3cc;line-height:1.6}
+.dsec p.muted{color:var(--dim);font-size:14px}
+.dsec p.lead{font-size:15.5px;color:#e4e1da;margin-bottom:4px;text-align:left;hyphens:manual;-webkit-hyphens:manual}
+.dsec>h3:first-of-type{margin-top:18px}
+/* a few numbered steps in a row (pairing a phone) */
+.steps-mini{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:4px 0 14px}
+.steps-mini div{display:flex;gap:12px;align-items:flex-start;padding:14px;background:var(--card2);border:1px solid var(--line);border-radius:var(--r2);font-size:13.5px;color:#d6d3cc;line-height:1.45}
+.steps-mini div>b{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:var(--accbg);color:var(--acc2);font:800 13px var(--mono)}
+.steps-mini span b{color:var(--text)}
+@media (max-width:680px){.steps-mini{grid-template-columns:1fr}}
+.kicker{font:700 12px var(--mono);color:var(--acc2);text-transform:uppercase;letter-spacing:1px}
+.dhero{display:grid;grid-template-columns:auto minmax(0,1fr);gap:28px;align-items:center;background:linear-gradient(135deg,rgba(255,106,43,.10),var(--card) 55%)}
+.dhero h2{font-size:32px}
+.shot{margin:0;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center}
+.shot img,.shot .torch{width:150px;aspect-ratio:1;border-radius:50%;display:block;background:#000;box-shadow:0 0 0 5px #1b1b20,0 0 0 6px var(--line2),0 16px 34px -16px #000}
+.shot.big img{width:210px;box-shadow:0 0 0 7px #1b1b20,0 0 0 8px var(--line2),0 30px 60px -25px #000}
+.shot .torch{background:radial-gradient(circle at 50% 45%,#fff,#f4f1ea 60%,#d9d4c8)}
+.shot figcaption{font-size:13px;color:var(--dim);font-weight:600;line-height:1.4}
+.shot figcaption b{display:block;color:var(--text);font-size:14px;margin-bottom:2px}
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:22px 14px;margin:18px 0}
+.gallery.four{grid-template-columns:repeat(4,minmax(0,1fr))}
+.gallery.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.gallery.apps{grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}
+.gallery .shot img,.gallery .shot .torch{width:min(140px,100%)}
+.tip{border-left:3px solid var(--acc);background:var(--accbg);color:#ffd9c7;border-radius:0 12px 12px 0;padding:12px 16px;margin:14px 0;font-size:14px;line-height:1.55}
+.tip b{color:#fff}
+.key{display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:8px;background:var(--card2);border:1px solid var(--line2);border-bottom-width:2px;font:600 12.5px var(--mono);color:var(--text);white-space:nowrap}
+.rows{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:var(--r2);overflow:hidden}
+.rows>div{display:grid;grid-template-columns:240px minmax(0,1fr);gap:6px 16px;align-items:center;padding:11px 14px;background:var(--card2);font-size:13px;color:var(--dim)}
+.rows>div+div{border-top:1px solid var(--line)}
+.lk{display:flex;align-items:center;gap:6px;flex-wrap:wrap;color:var(--dim);font-size:13px;font-weight:600}
+.rows p{margin:0!important;font-size:14px;color:#d6d3cc}
+.rows.compact>div{grid-template-columns:170px minmax(0,1fr);padding:8px 14px}
+.ladder{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:6px 0 12px}
+.ladder div{background:var(--card2);border:1px solid var(--line);border-radius:var(--r2);padding:12px;text-align:center}
+.ladder b{display:block;font:800 22px var(--mono);color:var(--acc2)}
+.ladder span{font-size:13px;color:var(--dim);font-weight:600}
+.ladder .warn{border-color:rgba(255,69,58,.35);background:rgba(255,69,58,.07)}
+.ladder .warn b{color:#ff8a82}
+.split{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:24px;align-items:start}
+.pair{display:flex;gap:18px;justify-content:center}
+.needs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.needs div{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;align-items:center;padding:12px 14px;background:var(--card2);border:1px solid var(--line);border-radius:var(--r2)}
+.needs i{grid-row:span 2;width:12px;height:36px;border-radius:6px;background:var(--c);box-shadow:0 0 14px -2px var(--c)}
+.needs b{font-size:14px}
+.needs span{font-size:12.5px;color:var(--dim)}
+.howto{display:grid;grid-template-columns:auto minmax(0,1fr);gap:24px;align-items:center;padding:18px 0;border-top:1px solid var(--line)}
+.dsec>.howto:first-of-type{border-top:0;padding-top:4px}
+.howto h3{margin-top:0}
+.howto.slim{border-top:0;margin-top:14px;padding:16px;background:var(--card2);border-radius:var(--r2)}
+.howto.slim .shot img{width:110px}
+.howto.slim p{margin:0}
+.chars{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:8px 0 14px}
+.chars>div{background:var(--card2);border:1px solid var(--line);border-radius:var(--r2);padding:16px}
+.chars>div.on{border-color:rgba(255,106,43,.5);background:var(--accbg)}
+.chars b{display:block;font-size:16px}
+.chars small{color:var(--acc2);font-weight:700;font-size:12px}
+.chars ul{margin:10px 0 0;padding-left:18px;color:#d6d3cc;font-size:13.5px;line-height:1.7}
+.games{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.game{background:var(--card2);border:1px solid var(--line);border-radius:var(--r2);padding:18px;display:flex;flex-direction:column;align-items:center;text-align:center}
+.game h3{margin:16px 0 6px}
+.game p{font-size:14px;margin:0}
+/* tiles: a drawn icon, a word and a line - no screenshots */
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;margin:10px 0 14px}
+.tiles.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.tiles.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.tiles.two>.tile:last-child:nth-child(odd){grid-column:1/-1} /* an odd one out takes the whole row */
+.tile{display:flex;gap:12px;align-items:flex-start;padding:14px;background:var(--card2);border:1px solid var(--line);border-radius:var(--r2)}
+.tile.col{flex-direction:column;gap:8px}
+.tile b{display:block;font-size:14.5px;color:var(--text);margin-bottom:3px}
+.tile span:not(.ti){display:block;font-size:13px;color:var(--dim);line-height:1.45}
+.ti{flex:none;width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:var(--accbg);color:var(--acc2)}
+.ti.pipi{border-radius:50%} /* the side buttons: Pip himself, round, a key on his side */
+.ti svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:14px;margin:16px 0}
+.strip .shot img{width:min(96px,100%)}
+.themes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:8px}
+.theme{border-radius:var(--r2);padding:18px 16px;border:1px solid var(--line2);display:flex;flex-direction:column;gap:2px}
+.theme .tw{font-size:22px;font-weight:800;margin-bottom:12px}
+.theme b{font-size:14.5px}.theme small{font-size:12.5px;opacity:.75}
+.theme.t0{background:#000;color:#e8e6e1}.theme.t0 .tw{color:#ff5a1f;letter-spacing:1px;text-transform:uppercase}
+.theme.t1{background:radial-gradient(#5a3530 1px,transparent 1.4px) 0 0/9px 9px,#3a1f1b;color:#e6d8c3}.theme.t1 .tw{font-family:var(--mono);font-weight:700;letter-spacing:2px}
+.theme.t2{background:#200818;color:#ffe0f0}.theme.t2 .tw{color:#ff63b4;font-family:"Pacifico","Segoe Script","Brush Script MT",cursive;font-weight:400}
+.dwarn{border-color:rgba(255,69,58,.35);background:linear-gradient(135deg,rgba(255,69,58,.08),var(--card) 60%)}
+.dwarn .kicker{color:#ff8a82}
+@media (max-width:900px){.tiles.three{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:680px){
+  .tiles.two,.tiles.three,.themes{grid-template-columns:1fr}
+  .tile.col{display:grid;grid-template-columns:40px minmax(0,1fr);column-gap:12px;row-gap:2px;align-items:start}
+  .tile.col .ti{grid-row:span 2}
+}
+.dsec details{margin-top:8px}
+.dsec details p{color:var(--dim)}
+/* prose set to the column's width: justified, with Russian hyphenation so the gaps stay even; cards that centre keep it */
+.dsec p,.dsec .tip,.dsec li{text-align:justify;text-align-last:left;hyphens:auto;-webkit-hyphens:auto;text-wrap:pretty}
+.dsec .game p,.dsec .shot,.dsec .shot figcaption{text-align:center;text-align-last:center;hyphens:manual;-webkit-hyphens:manual}
+@media (max-width:900px){
+  .doc{grid-template-columns:1fr}
+  .toc{position:sticky;top:0;z-index:4;flex-direction:row;overflow-x:auto;border-radius:14px;padding:6px;scrollbar-width:none}
+  .toc::-webkit-scrollbar{display:none}
+  .toc b{display:none}
+  .toc a{white-space:nowrap;flex:none}
+  .toc a.on{box-shadow:none}
+  .dsec{scroll-margin-top:64px}
+  .split,.games,.chars{grid-template-columns:1fr}
+  .gallery.four{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:680px){
+  .dsec{padding:20px 18px}
+  .dhero{grid-template-columns:1fr;justify-items:center;text-align:center}
+  .shot.big img{width:170px}
+  .howto{grid-template-columns:1fr;justify-items:center}
+  .howto>div:not(.pair){justify-self:stretch}
+  .rows>div,.rows.compact>div{grid-template-columns:1fr}
+  .ladder{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .gallery,.gallery.three{grid-template-columns:repeat(3,minmax(0,1fr));gap:16px 10px}
+  .gallery.apps{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .gallery .shot img,.gallery .shot .torch{width:100%}
+  .pair .shot img{width:120px}
+}
+
+footer{margin-top:40px;color:var(--faint);font-size:13px;text-align:center}
+
+@media (max-width:900px){
+  .cards,.steps{grid-template-columns:1fr}
+  .toggles,.vols{grid-template-columns:1fr}
+  .eyepick{grid-template-columns:repeat(4,minmax(0,1fr))}
+}
+@media (max-width:680px){
+  .wrap{padding:0 16px 56px}
+  .hero{grid-template-columns:1fr;justify-items:center;text-align:center;padding:24px 18px;gap:20px}
+  .hero p{margin-left:auto;margin-right:auto}
+  .screen{width:150px}.eyes{gap:16px}.eyes i{width:36px;height:48px}
+  .stats{text-align:left}
+  .top{gap:10px}
+  .connect{width:100%}.connect button{flex:1;padding:0 10px}
+  .eyepick{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .opts.three,.toggles.three{grid-template-columns:1fr}
+  .flashbox{grid-template-columns:1fr}
+  .modes{grid-template-columns:1fr}
+  .card{padding:18px}
+}
+/* ---- phones: one column, nothing wider than the screen, fingers-sized targets, no zoom when typing ---- */
+html{-webkit-text-size-adjust:100%}
+body{-webkit-tap-highlight-color:transparent}
+@media (max-width:680px){
+  body{font-size:14.5px}
+  .top{padding:14px 0 12px}
+  .brand b{font-size:18px}
+  .logo{width:36px;height:36px}
+  .pill{height:32px;padding:0 12px;font-size:12px;min-width:0}
+  .pill #state{overflow:hidden;text-overflow:ellipsis}
+  .hero{padding:20px 16px;gap:14px;border-radius:22px;margin-bottom:14px}
+  .screen{width:116px}.eyes{gap:12px}.eyes i{width:28px;height:38px}
+  .hero h1{font-size:23px}
+  .hero p{font-size:14px;margin-bottom:14px}
+  .stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;text-align:center}
+  .stat{padding:9px 6px}
+  .stat span{font-size:11px}
+  .stat b{font-size:14px}
+  /* the tabs as a 2-column block, every name whole; the odd last one spans the row */
+  .tabs{display:grid;grid-template-columns:1fr 1fr;width:100%;margin-bottom:14px}
+  .tabs button:last-child:nth-child(odd){grid-column:1/-1}
+  .tabs button{padding:0 8px;font-size:13.5px;height:40px}
+  .cards{gap:12px}
+  .card{padding:16px;gap:14px;border-radius:18px}
+  .card h2{font-size:15.5px}
+  .card-h p{font-size:12.5px}
+  .eyepick{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  .eyepick button{padding:12px 4px 10px;font-size:12px}
+  .ball{width:40px;height:40px}
+  .toggle{padding:12px 14px}
+  input[type=range]{height:44px}
+  input[type=range]::-webkit-slider-thumb{width:26px;height:26px;margin-top:-10px}
+  input[type=range]::-moz-range-thumb{width:26px;height:26px}
+  .chips button{height:40px}
+  /* the menu editor: shallower indent, 16 px text (no zoom on iPhone), the two buttons one under the other */
+  .mb>.mlist{padding-left:10px}
+  .mi input,.mh input{font-size:16px}
+  .grip{width:38px;height:38px}
+  /* flashing: the steps as compact rows, number on the left */
+  .steps li{display:grid;grid-template-columns:28px minmax(0,1fr);gap:2px 12px;padding:12px 14px}
+  .steps li:before{grid-row:span 2;margin:0}
+  .mode{padding:16px}
+  .row button{flex:1 1 auto}
+  .toast{width:max-content;max-width:calc(100vw - 32px);white-space:normal;text-align:left;bottom:16px}
+  .undo{display:none}
+  .renamed>.undo{display:inline-flex}
+  .tag{padding:2px 6px;font-size:10.5px}
+  dialog{padding:22px}
+  footer{margin-top:28px;font-size:12px;padding:0 8px}
+}
+@media (max-width:360px){
+  .wrap{padding:0 12px 48px}
+  .connect button{font-size:13px;gap:6px}
+  .eyepick{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .stat span{font-size:10.5px}
+  .tabs button{font-size:12.5px}
+}
+/* ---------- motion: every switch and opening eases in (off with "reduce motion", the rule at the end) ---------- */
+:root{interpolate-size:allow-keywords;--ease:cubic-bezier(.2,.8,.2,1)}
+html{scroll-behavior:smooth}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}}
+@keyframes pop{from{opacity:0;transform:scale(.4)}}
+/* a tab's page, a notice or the flashing bar as it shows */
+section[data-tab]:not([hidden]){animation:rise .32s var(--ease)}
+.notice:not([hidden]),#flashProg:not([hidden]){animation:rise .3s var(--ease)}
+/* the tabs' pill and every choice's tick */
+.tabs button{transition:background .25s,color .25s,box-shadow .25s}
+.eyepick button.on:after,.opt.on:after{animation:pop .25s var(--ease)}
+button{transition:background .2s,border-color .2s,color .2s,box-shadow .2s,transform .1s,filter .15s,opacity .2s}
+/* spoilers (licence text, "Не получается?", the questions in the guide) open and close by height */
+details::details-content{block-size:0;overflow:hidden;opacity:0;
+  transition:block-size .3s var(--ease),opacity .25s,content-visibility .3s allow-discrete}
+details[open]::details-content{block-size:auto;opacity:1}
+details summary{transition:color .15s}
+/* the update dialog fades and rises in, and back out */
+dialog{opacity:0;transform:translateY(12px) scale(.97);
+  transition:opacity .25s,transform .3s var(--ease),overlay .3s allow-discrete,display .3s allow-discrete}
+dialog[open]{opacity:1;transform:none}
+@starting-style{dialog[open]{opacity:0;transform:translateY(12px) scale(.97)}}
+dialog::backdrop{opacity:0;transition:opacity .25s,overlay .3s allow-discrete,display .3s allow-discrete}
+dialog[open]::backdrop{opacity:1}
+@starting-style{dialog[open]::backdrop{opacity:0}}
+/* folded cards (the menu editor, the licences' lists) open by height (JS: slide) */
+.fold-body{overflow:hidden}
+.fold-body.stack{display:flex;flex-direction:column;gap:16px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}html{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<div id="loader" aria-hidden="true"><div class="ld-eyes"><i></i><i></i></div><div class="ld-bar"></div></div>
+<script>
+/* the loading screen goes once the page is built (the module script has run: DOMContentLoaded) and its fonts are in,
+   two frames later so the layout has settled under it */
+(() => {
+  const built = new Promise(r => document.readyState === 'loading' ? addEventListener('DOMContentLoaded', r, {once: true}) : r());
+  const fonts = document.fonts ? document.fonts.ready : Promise.resolve();
+  const late = new Promise(r => setTimeout(r, 4000)); /* a font that never comes holds nothing up for long */
+  /* Faded out by one Web Animation and then only hidden, never removed: a CSS transition with the element taken out
+     of the page under it made Chrome put the whole black screen back for a frame or two after the fade (seen on F5) */
+  const hide = () => {
+    const l = document.getElementById('loader');
+    if (!l || l.dataset.gone) return;
+    l.dataset.gone = '1';
+    l.style.pointerEvents = 'none';
+    const done = () => { l.style.visibility = 'hidden'; l.style.opacity = '0'; }; /* twice is harmless */
+    if (!l.animate || getComputedStyle(l).visibility === 'hidden') return done();
+    l.animate([{opacity: 1}, {opacity: 0}], {duration: 450, easing: 'ease', fill: 'forwards'}).finished.then(done, done);
+    setTimeout(done, 700); /* a background tab draws no frames: its animation may not finish on time */
+  };
+  /* two frames, or 150 ms where frames do not come (a tab in the background) */
+  Promise.race([Promise.all([built, fonts]), late]).then(() => { requestAnimationFrame(() => requestAnimationFrame(hide)); setTimeout(hide, 150); });
+})();
+</script>
+<div id="linking" role="status" aria-live="polite"><div class="box"><div class="ld-eyes"><i></i><i></i></div><div class="ld-bar"></div>
+  <b>Подключаюсь к Пипу…</b><small id="linkingText">Получаю его настройки</small></div></div>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <div class="logo" aria-hidden="true"><i></i><i></i></div>
+      <div><b>Пип</b><small>панель брелока</small></div>
+    </div>
+    <div class="pill" role="status"><span class="dot"></span><span id="state">Не подключён</span></div>
+    <div class="connect">
+      <button class="main" id="usb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v4M15 3v4M7 7h10v5a5 5 0 0 1-10 0V7zM12 17v4"/></svg>По кабелю</button>
+      <button id="ble"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7l10 10-5 4V3l5 4L7 17"/></svg>По Bluetooth</button>
+    </div>
+  </header>
+
+  <div class="notice warn" id="nobrowser" hidden>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 9v4M12 17h.01M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+    <div id="nobrowserText">Этот браузер несовместим с брелоком. Используй <b>Google Chrome</b> или <b>Microsoft Edge</b></div>
+  </div>
+
+  <div class="notice" id="deadBar" hidden>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><circle cx="12" cy="12" r="10"/></svg>
+    <div style="flex:1" id="deadText"></div>
+  </div>
+
+  <div class="notice" id="outdatedBar" hidden>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+    <div style="flex:1">Прошивка устарела. Обнови её, чтобы открыть настройки. Питомец и настройки сохранятся</div>
+    <button class="main" id="outdatedGo" style="height:36px">Обновить</button>
+  </div>
+
+  <dialog id="updDlg" aria-labelledby="updTitle">
+    <div class="ic big"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></div>
+    <h2 id="updTitle">Нужно обновить прошивку</h2>
+    <p>Вышла новая версия. Пока не обновишь, настройки недоступны</p>
+    <div class="vers"><span id="updOld">—</span>→<span class="new" id="updNew">—</span></div>
+    <p>Питомец, настройки и подключённый iPhone сохранятся. Понадобится кабель USB-C</p>
+    <div class="acts"><button class="main" id="updGo">Обновить сейчас</button><button class="ghost" id="updLater">Позже</button></div>
+  </dialog>
+
+  <section class="hero">
+    <div class="screen" aria-hidden="true"><div class="eyes"><i></i><i></i></div></div>
+    <div>
+      <h1 id="heroTitle">Пип не подключён</h1>
+      <p id="needlink">Кабелем USB-C или по Bluetooth. Настройки брелока появятся здесь, а изменения уйдут в него по кнопке «Применить изменения»</p>
+      <div class="stats">
+        <div class="stat"><span>Возраст</span><b id="age">—</b></div>
+        <div class="stat"><span>Батарея</span><b id="bat">—</b></div>
+        <div class="stat"><span>Прошивка</span><b id="ver">—</b></div>
+      </div>
+    </div>
+  </section>
+
+  <nav class="tabs" id="tabs" role="tablist">
+    <button data-tab="settings" class="on" role="tab">Настройки</button>
+    <button data-tab="flash" role="tab">Прошивка</button>
+    <button data-tab="docs" role="tab">Документация</button>
+    <button data-tab="dev" role="tab">Продвинутые настройки</button>
+    <button data-tab="lic" role="tab">Лицензии</button>
+  </nav>
+
+  <main>
+    <section data-tab="settings">
+      <div class="cards">
+        <div class="card wide">
+          <div class="card-h"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></div>
+            <div><h2>Глаза Пипа</h2><p>Слева цвет зрачка, справа — цвет вокруг него</p></div></div>
+          <div class="eyepick needs-link" id="eyes" role="radiogroup" aria-label="Цвет глаз"></div>
+        </div>
+
+        <div class="card wide">
+          <div class="card-h"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg></div>
+            <div><h2>Характер Пипа</h2><p>Как часто Пипа нужно кормить, выгуливать и развлекать. Меняется только здесь</p></div></div>
+          <div class="opts three needs-link" id="care" role="radiogroup" aria-label="Характер Пипа"></div>
+          <div class="card-h subh"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 10h.01M12 10h.01M16 10h.01"/></svg></div>
+            <div><h2>Болтливость</h2><p>Как часто Пип говорит сам с собой и с тобой</p></div></div>
+          <div class="opts three needs-link" id="chat" role="radiogroup" aria-label="Болтливость"></div>
+          <div class="card-h subh"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 15a5 5 0 1 1 3-9 4 4 0 0 1 7 2 3.5 3.5 0 0 1-1 7z"/><path d="M7 19h.01M11 20h.01M15 19h.01"/></svg></div>
+            <div><h2>Неловкие звуки</h2><p>Чихает, рыгает и пукает сам по себе. Выключи то, что не нравится</p></div></div>
+          <div class="toggles three needs-link" id="noises"></div>
+        </div>
+
+        <div class="card" style="justify-content:space-between">
+          <div class="card-h"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></div>
+            <div><h2>Экран и батарея</h2><p>Ранний сон и низкая яркость берегут заряд</p></div></div>
+          <div class="field needs-link" id="brightField"><div class="lbl"><span>Яркость</span> <output id="brightOut">60%</output></div>
+            <div class="range"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/></svg>
+              <input type="range" id="bright" autocomplete="off" min="10" max="100" step="5" value="60" aria-label="Яркость">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></div>
+            <div class="ticks" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+          <label class="check needs-link"><input type="checkbox" id="f9" autocomplete="off">
+            <span><b>Просыпается от движения</b><small>погасший экран загорается, если Пипа взять в руку или потрясти</small></span></label>
+          <div class="field needs-link"><div class="lbl">Засыпает, если его не трогать</div>
+            <div class="chips" id="power" role="radiogroup" aria-label="Засыпать через"></div>
+            <p class="muted" id="powerNote" style="margin-top:10px"></p></div>
+          <div class="toggles needs-link">
+            <div class="toggle"><div><b>Автояркость</b><small>тусклее при низком заряде</small></div>
+              <label class="switch"><input type="checkbox" id="abright" autocomplete="off" aria-label="Автояркость"><span></span></label></div>
+            <div class="toggle"><div><b>Энергосбережение</b><small>меньше кадров, микрофон и музыка выключены</small></div>
+              <label class="switch"><input type="checkbox" id="eco" autocomplete="off" aria-label="Энергосбережение"><span></span></label></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-h"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg></div>
+            <div><h2>Оформление и звук</h2><p>Тема меняет меню и приложения, сам Пип не меняется</p></div></div>
+          <div class="opts list needs-link" id="theme" role="radiogroup" aria-label="Оформление"></div>
+          <div class="vols needs-link">
+            <div class="vol"><div class="lbl"><span><b>Голос Пипа</b><small>звуки, которые издаёт&nbsp;Пип</small></span><output id="sndPipOut">100%</output></div>
+              <div class="range"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/></svg>
+                <input type="range" id="sndPip" autocomplete="off" min="0" max="5" step="1" value="5" aria-label="Громкость голоса Пипа">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9h4l5-4v14l-5-4H3z"/><path d="M16 9a4 4 0 0 1 0 6M19 6a8 8 0 0 1 0 12"/></svg></div>
+              <div class="ticks" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+            <div class="vol"><div class="lbl"><span><b>Звуки меню</b><small>щелчки, таймер, звонок</small></span><output id="sndUiOut">100%</output></div>
+              <div class="range"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/></svg>
+                <input type="range" id="sndUi" autocomplete="off" min="0" max="5" step="1" value="5" aria-label="Громкость звуков меню">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9h4l5-4v14l-5-4H3z"/><path d="M16 9a4 4 0 0 1 0 6M19 6a8 8 0 0 1 0 12"/></svg></div>
+              <div class="ticks" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-h"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg></div>
+            <div><h2>Уведомления с телефона</h2><p>Что показывать на экране брелока</p></div></div>
+          <div class="opts list needs-link" id="privacy" role="radiogroup" aria-label="Уведомления"></div>
+          <div class="toggles needs-link" style="grid-template-columns:1fr">
+            <div class="toggle"><div><b>Звонки</b><small>входящий звонок появится на брелоке: ответить или отклонить</small></div>
+              <label class="switch"><input type="checkbox" id="calls" autocomplete="off" aria-label="Звонки"><span></span></label></div>
+          </div>
+          <div class="notice" style="margin:12px 0 10px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+            <div>На <b>Android</b> музыка и уведомления работать не будут</div>
+          </div>
+          <p class="muted">Чтобы подключить брелок, открой на телефоне «Настройки» → Bluetooth → Pip и подтверди код верхней кнопкой</p>
+        </div>
+
+        <div class="card">
+          <div class="card-h"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4"/></svg></div>
+            <div><h2>Что Пип замечает</h2><p>Отключи то, что мешает</p></div></div>
+          <div class="toggles needs-link" id="feats"></div>
+          <div class="bdayWrap needs-link" id="bdayWrap"><div><div class="bdayPick" id="bdayPick">
+            <label>День<select id="bdayD" aria-label="День"></select></label>
+            <label>Месяц<select id="bdayM" aria-label="Месяц"></select></label>
+          </div></div></div>
+        </div>
+
+        <div class="card wide">
+          <button class="card-h fold" id="menuFold" aria-expanded="false" aria-controls="menuBody"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></div>
+            <div><h2>Меню брелока</h2><p>Порядок приложений и их названия</p></div>
+            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+          <div class="fold-body" id="menuBody" hidden>
+            <p class="muted" style="margin:12px 0">Перетаскивай строки за ручку слева: блоки меняются местами, приложения переходят из блока в блок или в главное меню. Нажми на название, чтобы переименовать</p>
+            <div class="menued needs-link" id="menuEd"><div class="mlist" id="mTop" aria-label="Главное меню"></div></div>
+            <div class="menuFoot needs-link"><button type="button" class="ghost" id="menuReset" disabled>Отменить все изменения</button></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section data-tab="flash" hidden>
+      <div class="cards">
+        <div class="card wide">
+          <div class="card-h"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></div>
+            <div><h2>Обновить или прошить Пипа</h2><p id="fwinfo"></p></div></div>
+          <ol class="steps">
+            <li><b>Подключи кабель</b><span class="muted">USB-C с передачей данных, а не «только для зарядки»</span></li>
+            <li><b>Выбери действие</b><span class="muted">«Обновить» или «Прошить начисто», затем в списке — <b>USB JTAG/serial</b></span></li>
+            <li><b>Подожди минуту</b><span class="muted">Не отключай кабель, пока полоска не заполнится</span></li>
+          </ol>
+          <div class="modes">
+            <div class="mode">
+              <h3>Обновить прошивку</h3>
+              <span class="keep"><i>✓</i>Данные сохранятся</span>
+              <p class="muted">Новая версия поверх старой. Питомец, настройки, цвет глаз и сопряжение с телефоном остаются</p>
+              <button class="main" id="flash">Обновить</button>
+            </div>
+            <div class="mode clean">
+              <h3>Прошить начисто</h3>
+              <span class="keep no"><i>✕</i>Всё сотрётся</span>
+              <p class="muted">Как с завода: новый питомец, настройки по умолчанию, сопряжения, история и лог батареи удаляются. Помогает, если что-то сломалось</p>
+              <button class="danger" id="flashClean">Прошить начисто</button>
+            </div>
+          </div>
+          <div id="flashProg" hidden><div class="bar"><i id="prog"></i></div><p id="flashState" class="muted" style="margin-top:8px"></p></div>
+          <details class="muted"><summary>Не получается?</summary>
+            <p>Брелока нет в списке — попробуй другой кабель или USB-порт. В Linux один раз выполни
+              <code>sudo usermod -aG dialout $USER</code> и войди в систему заново</p>
+            <p>Прошивка не начинается — зажми нижнюю кнопку, коротко нажми верхнюю и отпусти нижнюю. Брелок перейдёт
+              в режим прошивки, нажми «Обновить» ещё раз</p></details>
+        </div>
+      </div>
+    </section>
+
+    <section data-tab="dev" hidden>
+      <div class="cards">
+        <div class="card">
+          <div class="card-h"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="9" cy="11" r="1.4"/><circle cx="15" cy="11" r="1.4"/></svg></div>
+            <div><h2>Симулятор</h2><p>Пип в браузере: брелок в 3D, все приложения и эмоции</p></div></div>
+          <p class="muted">Попробуй Пипа без брелока: покорми, погладь, поиграй и посмотри все приложения. Откроется в новой вкладке</p>
+          <div class="row"><button id="openSim">Открыть симулятор</button></div>
+        </div>
+        <div class="card">
+          <div class="card-h"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/></svg></div>
+            <div><h2>Таблица эмоций</h2><p>Все эмоции Пипа с картинками и тем, как их вызвать</p></div></div>
+          <p class="muted">С поиском и фильтрами: хорошие, плохие, автоматические и редкие. Откроется в новой вкладке</p>
+          <div class="row"><button id="openList">Открыть таблицу</button></div>
+        </div>
+        <div class="card">
+          <div class="card-h"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg></div>
+            <div><h2>Отладка</h2><p>Дерево эмоций, история за сутки, любая эмоция и настройки правил</p></div></div>
+          <p class="muted">Откроется в новой вкладке. Брелок на кабеле она подключит сама, по Bluetooth — нажми там «По Bluetooth»</p>
+          <div class="row"><button id="openDebug">Открыть отладку</button></div>
+        </div>
+        <div class="card">
+          <div class="card-h"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M9 21V9"/></svg></div>
+            <div><h2>Режим разработчика</h2><p>Служебная информация поверх Пипа</p></div></div>
+          <p class="muted">Каркас глаз, взгляд, области перерисовки и счётчики прямо на экране брелока</p>
+          <div class="row needs-link"><button id="devOn">Включить</button><button id="devOff" class="ghost">Выключить</button></div>
+        </div>
+        <div class="card wide">
+          <div class="card-h"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="18" height="10" rx="2"/><path d="M22 11v2M6 11v2"/></svg></div>
+            <div><h2>Лог батареи</h2><p>Сколько держит заряд</p></div></div>
+          <p class="muted">Раз в минуту Пип записывает заряд, памяти хватает примерно на 17 часов. Заряди до 100%, отключи кабель и дождись, пока сядет, а потом подключи его сюда</p>
+          <div class="batchart" id="batChart">
+            <svg id="batSvg" role="img" aria-label="Уровень заряда по времени"></svg>
+            <div class="bat-tip" id="batTip" hidden></div>
+            <div class="bat-note" id="batNote" hidden><b id="batNoteH"></b><span id="batNoteP"></span></div>
+          </div>
+          <div class="row needs-link"><button id="batGet">Скачать CSV</button><button id="batClear" class="ghost">Удалить лог</button><span class="saved" id="batState"></span></div>
+        </div>
+      </div>
+    </section>
+    <section data-tab="lic" hidden>
+      <div class="cards">
+        <div class="card wide">
+          <div class="card-h"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg></div>
+            <div><h2>Пип — открытый проект</h2><p>Прошивка, симуляторы и эта панель</p></div></div>
+          <div class="repos">
+            <a class="repo" href="https://github.com/ibuzy/pip" target="_blank" rel="noopener"><svg class="go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17L17 7M8 7h9v9"/></svg>
+              <span class="repo-tag">Этот проект</span><b>ibuzy / pip</b><span>Здесь живёт эта версия Пипа: исходники и обновления</span></a>
+            <a class="repo" href="https://github.com/NovikovVisuals/Pip-KeyPet" target="_blank" rel="noopener"><svg class="go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17L17 7M8 7h9v9"/></svg>
+              <span class="repo-tag">Основа</span><b>NovikovVisuals / Pip-KeyPet</b><span>Исходный проект, из которого вырос Пип</span></a>
+          </div>
+          <p class="muted">Оба проекта открыты и распространяются по <a href="https://opensource.org/license/mit" target="_blank" rel="noopener">лицензии MIT</a>: код можно свободно использовать, менять и распространять, сохраняя уведомление об авторских правах</p>
+        </div>
+        <div class="card wide">
+          <button class="card-h fold" id="fontsFold" aria-expanded="false" aria-controls="fontsBody"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16M7 16l5-12 5 12M9 12h6"/></svg></div>
+            <div><h2>Шрифты</h2><p>Все под SIL Open Font License 1.1: свободны для любого использования, в том числе встроенными в прошивку</p></div>
+            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+          <div class="fold-body stack" id="fontsBody" hidden>
+          <ul class="lic">
+            <li><div><a class="lic-n" href="https://github.com/JetBrains/JetBrainsMono" target="_blank" rel="noopener">JetBrains Mono</a><span>Тема «Стандартная» на брелоке, цифры в панели</span><small>© 2020 The JetBrains Mono Project Authors</small></div><em><a href="https://openfontlicense.org" target="_blank" rel="noopener">SIL OFL 1.1</a></em></li>
+            <li><div><a class="lic-n" href="https://github.com/IBM/plex" target="_blank" rel="noopener">IBM Plex Mono</a><span>Тема «Ретро» на брелоке, казахские буквы темы «Стандартная»</span><small>© 2017 IBM Corp., зарезервированное имя «Plex»</small></div><em><a href="https://openfontlicense.org" target="_blank" rel="noopener">SIL OFL 1.1</a></em></li>
+            <li><div><a class="lic-n" href="https://github.com/googlefonts/comfortaa" target="_blank" rel="noopener">Comfortaa</a><span>Текст темы «Барби»</span><small>© 2011 The Comfortaa Project Authors (Johan Aakerlund)</small></div><em><a href="https://openfontlicense.org" target="_blank" rel="noopener">SIL OFL 1.1</a></em></li>
+            <li><div><a class="lic-n" href="https://github.com/googlefonts/Pacifico" target="_blank" rel="noopener">Pacifico</a><span>Заголовки и цифры темы «Барби»</span><small>© 2018 The Pacifico Project Authors (Vernon Adams)</small></div><em><a href="https://openfontlicense.org" target="_blank" rel="noopener">SIL OFL 1.1</a></em></li>
+            <li><div><a class="lic-n" href="https://github.com/JulietaUla/Montserrat" target="_blank" rel="noopener">Montserrat</a><span>Знаки над глазами Пипа: «!», «?» и ругательства</span><small>© 2011 The Montserrat Project Authors (Julieta Ulanovsky)</small></div><em><a href="https://openfontlicense.org" target="_blank" rel="noopener">SIL OFL 1.1</a></em></li>
+            <li><div><a class="lic-n" href="https://github.com/sharanda/manrope" target="_blank" rel="noopener">Manrope</a><span>Текст панели и симулятора (Google Fonts)</span><small>© 2018 The Manrope Project Authors (Mikhail Sharanda)</small></div><em><a href="https://openfontlicense.org" target="_blank" rel="noopener">SIL OFL 1.1</a></em></li>
+          </ul>
+          <p class="muted">В прошивку шрифты встроены растровыми подмножествами (только нужные буквы), исходники лежат в assets/fonts</p>
+          </div>
+        </div>
+        <div class="card wide">
+          <button class="card-h fold" id="libsFold" aria-expanded="false" aria-controls="libsBody"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l9 5v10l-9 5-9-5V7z"/><path d="M12 22V12M21 7l-9 5-9-5"/></svg></div>
+            <div><h2>Библиотеки</h2><p>Чужой код, на котором держится Пип</p></div>
+            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+          <div class="fold-body stack" id="libsBody" hidden>
+          <ul class="lic">
+            <li><div><a class="lic-n" href="https://github.com/lvgl/lvgl" target="_blank" rel="noopener">LVGL</a><span>Графика и интерфейс брелока, симулятора и веб-симулятора</span><small>© 2025 LVGL Kft</small></div><em>MIT</em></li>
+            <li><div><a class="lic-n" href="https://github.com/espressif/esp-idf" target="_blank" rel="noopener">ESP-IDF и NimBLE</a><span>Система прошивки, Bluetooth, сон и питание</span><small>© Espressif Systems, © The Apache Software Foundation</small></div><em><a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener">Apache 2.0</a></em></li>
+            <li><div><a class="lic-n" href="https://components.espressif.com" target="_blank" rel="noopener">Компоненты Espressif</a><span>Дисплей, касания, кодеки звука, кнопки</span><small>© Espressif Systems</small></div><em><a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener">Apache 2.0</a></em></li>
+            <li><div><a class="lic-n" href="https://github.com/waveshareteam" target="_blank" rel="noopener">Waveshare BSP</a><span>Поддержка платы ESP32-S3-Touch-AMOLED-1.75C и сенсора CST9217</span><small>© Waveshare</small></div><em><a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener">Apache 2.0</a></em></li>
+            <li><div><a class="lic-n" href="http://www.libpng.org/pub/png/libpng.html" target="_blank" rel="noopener">libpng</a><span>Входит в прошивку через графические компоненты</span><small>© Contributing Authors and Group 42, Inc.</small></div><em><a href="http://www.libpng.org/pub/png/src/libpng-LICENSE.txt" target="_blank" rel="noopener">libpng</a></em></li>
+            <li><div><a class="lic-n" href="https://github.com/espressif/esptool-js" target="_blank" rel="noopener">esptool-js</a><span>Прошивка брелока прямо из браузера</span><small>© Espressif Systems</small></div><em><a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener">Apache 2.0</a></em></li>
+            <li><div><a class="lic-n" href="https://github.com/mrdoob/three.js" target="_blank" rel="noopener">three.js</a><span>3D-модель брелока в симуляторе</span><small>© 2010–2025 three.js authors</small></div><em>MIT</em></li>
+            <li><div><a class="lic-n" href="https://github.com/emscripten-core/emscripten" target="_blank" rel="noopener">Emscripten</a><span>Сборка кода брелока для браузера</span><small>© 2010–2014 Emscripten authors</small></div><em>MIT</em></li>
+          </ul>
+          <p class="muted">Мелодия «Happy Birthday to You», которую Пип поёт в день рождения владельца, находится в общественном достоянии</p>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section data-tab="docs" hidden>
+      <div class="doc">
+        <nav class="toc" id="toc" aria-label="Разделы документации">
+          <b>Документация</b>
+          <a href="#d-hello">Знакомство</a>
+          <a href="#d-controls">Кнопки и жесты</a>
+          <a href="#d-care">Уход</a>
+          <a href="#d-character">Характер</a>
+          <a href="#d-moods">Настроение</a>
+          <a href="#d-play">Игры с Пипом</a>
+          <a href="#d-bond">Отношения</a>
+          <a href="#d-forget">Если забыть</a>
+          <a href="#d-apps">Приложения</a>
+          <a href="#d-iphone">Телефон</a>
+          <a href="#d-power">Экран и батарея</a>
+          <a href="#d-panel">Панель</a>
+          <a href="#d-faq">Вопросы</a>
+        </nav>
+
+        <div class="dbody">
+          <article class="dsec dhero" id="d-hello">
+            <figure class="shot big"><img src="guide/hero.webp" alt="Пип радуется" loading="lazy"></figure>
+            <div>
+              <span class="kicker">Знакомство</span>
+              <h2>Это Пип</h2>
+              <p>Пип — маленький питомец, который живёт в брелоке. У него есть только глаза, но по ним видно всё: голоден ли он,
+                устал, заскучал или просто рад тебя видеть. Корми его, гуляй с ним, гладь и играй — и он ответит тем же.</p>
+              <div class="tip"><b>Первая встреча.</b> Новый Пип ещё не родился, и экран тёмный. Нажми любую кнопку: в темноте
+                загорится искра, к ней слетится звёздная пыль, вспышка — и вот он открывает глаза. Такое бывает только
+                один раз. С этой минуты начинается его жизнь.</div>
+            </div>
+          </article>
+
+          <article class="dsec" id="d-controls">
+            <span class="kicker">Управление</span>
+            <h2>Кнопки и жесты</h2>
+            <p class="lead">Пип чувствует всё: касания, движения брелока и даже твоё дыхание. На одно и то же он отвечает
+              по-разному — смотря какое у него настроение.</p>
+
+            <h3>Кнопки</h3>
+            <div class="tiles two">
+              <div class="tile"><span class="ti pipi"><svg viewBox="0 0 24 24"><circle cx="11" cy="12" r="8"/><path d="M17.6 7.4l2-1.4" stroke-width="2.6"/></svg></span>
+                <div><b>Верхняя</b><span>Открывает меню и выбранную строку. Если подержать несколько секунд, брелок выключится.</span></div></div>
+              <div class="tile"><span class="ti pipi"><svg viewBox="0 0 24 24"><circle cx="11" cy="12" r="8"/><path d="M17.6 16.6l2 1.4" stroke-width="2.6"/></svg></span>
+                <div><b>Нижняя</b><span>Нажми — поздороваться, подержи — покормить, нажми и сразу подержи — помыть. В меню и приложениях это «назад».</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M20 4v16M15 12H4M8 8l-4 4 4 4"/></svg></span>
+                <div><b>Назад жестом</b><span>Проведи пальцем от правого края экрана влево — как нажать нижнюю кнопку.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg></span>
+                <div><b>Сразу к Пипу</b><span>Дважды быстро нажми нижнюю кнопку — из любого приложения попадёшь прямо к нему.</span></div></div>
+            </div>
+            <h3>Несколько нажатий подряд</h3>
+            <div class="ladder">
+              <div><b>1</b><span>привет</span></div>
+              <div><b>2–6</b><span>щекотно</span></div>
+              <div class="warn"><b>7–9</b><span>«хватит!»</span></div>
+              <div class="warn"><b>10</b><span>голова кругом</span></div>
+            </div>
+            <p class="muted">Так терпит Уравновешенный Пип. Неприхотливый смеётся дольше, а Требовательный быстрее устаёт
+              от щекотки и может всерьёз разозлиться. Четыре медленных ровных нажатия — уже не щекотка, а ритм: об этом
+              в разделе «Игры с Пипом».</p>
+
+            <h3>Касания</h3>
+            <div class="tiles two">
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg></span>
+                <div><b>Тык</b><span>Лёгкий тычок. Попадёшь в глаз — Пип его зажмурит.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="13" r="1.6"/></svg></span>
+                <div><b>По носу</b><span>Тыкни ровно между глаз — Пип скосит их к носу и фыркнет, хихикнет или чихнёт.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg></span>
+                <div><b>Погладить</b><span>Проведи пальцем по экрану. Это лучший способ сказать, что ты его любишь, а долгая ласка его растрогает.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M4 9c4-5 12-5 16 0"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/></svg></span>
+                <div><b>По макушке</b><span>Гладь у верхнего края экрана — Пип зажмурится и подставит голову.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/><circle cx="12" cy="12" r="9"/></svg></span>
+                <div><b>Щекотка</b><span>Быстро потри пальцем одно место — Пип расхохочется.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M12 12a1.5 1.5 0 0 1 3 0 3 3 0 0 1-6 0 4.5 4.5 0 0 1 9 0 6 6 0 0 1-12 0 7.5 7.5 0 0 1 15 0"/></svg></span>
+                <div><b>Спираль</b><span>Нарисуй на экране круги — глаза Пипа закружатся следом, а потом у него поплывёт голова.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M12 4v13M7 12l5 5 5-5"/></svg></span>
+                <div><b>Закрыть глаза</b><span>Медленно проведи сверху вниз по глазам: сонный Пип уснёт, а бодрый откроет их обратно.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M12 20V7M7 12l5-5 5 5"/></svg></span>
+                <div><b>Разбудить</b><span>Проведи снизу вверх по спящему Пипу — он нехотя проснётся и поворчит.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><circle cx="7" cy="15" r="3"/><circle cx="17" cy="15" r="3"/><path d="M7 7h.01M17 7h.01"/></svg></span>
+                <div><b>Щёчки</b><span>Под глазами. Тыкни — Пип смутится и покраснеет, погладь — прильнёт к пальцу.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M6 14c2 4 10 4 12 0"/><path d="M12 21v-3"/></svg></span>
+                <div><b>Подбородок</b><span>Почеши внизу, посередине — Пип задерёт голову и блаженно зажмурится.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M3 12h6M6 9l3 3-3 3"/><circle cx="16" cy="12" r="5"/></svg></span>
+                <div><b>Тык в бок</b><span>У самого края слева или справа. Пипу щекотно, и он отпрыгивает.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><path d="M9 12h6"/></svg></span>
+                <div><b>Палец на глазу</b><span>Подержишь палец на глазу — Пип зажмурится и возмутится, а если не отпускать, рассердится.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M9 12H3M6 9l-3 3 3 3M15 12h6M18 9l3 3-3 3"/><circle cx="12" cy="12" r="1.5"/></svg></span>
+                <div><b>Растянуть глаза</b><span>Поставь два пальца на оба глаза и разведи в стороны — глаза поползут за пальцами. Отпусти — схлопнутся с «бои-оинг».</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M3 12h6M6 9l3 3-3 3M21 12h-6M18 9l-3 3 3 3"/></svg></span>
+                <div><b>Свести глаза</b><span>Два пальца на глаза — и сведи их вместе: глаза съедутся к носу и закосят. Отпустишь — разлетятся обратно.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><circle cx="8" cy="15" r="2.5"/><circle cx="16" cy="15" r="2.5"/><path d="M8 4v8M16 4v8"/></svg></span>
+                <div><b>Два пальца</b><span>Положи два пальца где-нибудь не на глаза — у Пипа глаза разбегаются: он не знает, на какой смотреть.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M7 11V5a1.5 1.5 0 0 1 3 0v5M10 10V3.5a1.5 1.5 0 0 1 3 0V10M13 10V4.5a1.5 1.5 0 0 1 3 0V11M16 11V7.5a1.5 1.5 0 0 1 3 0V14a7 7 0 0 1-7 7h-1a6 6 0 0 1-5-2.7L3 14.5a1.5 1.5 0 0 1 2.4-1.8L7 14"/></svg></span>
+                <div><b>Ладонь</b><span>Накрой экран ладонью — Пипа сплющит. Убери руку — он выпрыгнет обратно и отряхнётся. Это тоже игра в прятки.</span></div></div>
+            </div>
+
+            <h3>Движения</h3>
+            <div class="tiles two">
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M2 12h4l3-8 4 16 3-8h6"/></svg></span>
+                <div><b>Потрясти</b><span>Слегка и недолго — может развеселиться. Сильно или долго — у него закружится голова, а если продолжать, его укачает.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M4 8c3-4 13-4 16 0M4 16c3 4 13 4 16 0"/></svg></span>
+                <div><b>Качели</b><span>Покачай брелок из стороны в сторону — Пип будет в восторге.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M5 15c2 3 12 3 14 0"/><path d="M8 9h.01M16 9h.01"/></svg></span>
+                <div><b>Укачать</b><span>Покачивай плавно и медленно — Пип замурлычет колыбельную. Уставший уснёт, бодрый заскучает.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></span>
+                <div><b>Экраном вниз</b><span>Пип засыпает, и экран гаснет. Перевернёшь через секунду — это игра в прятки.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3"/><path d="M18 3v4h-4M6 21v-4h4"/></svg></span>
+                <div><b>Кувырок</b><span>Несколько раз быстро переверни брелок — Пип закувыркается от восторга. Не переусердствуй: голова закружится.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M12 3v14M6 11l6 6 6-6M4 21h16"/></svg></span>
+                <div><b>Уронить или бросить</b><span>Пип испугается и обидится. Погладь его — и он простит.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M12 21V8M7 13l5-5 5 5M5 3h14"/></svg></span>
+                <div><b>Вверх ногами</b><span>Пипу так неуютно. Переверни обратно — и он с облегчением выдохнет.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M13 4a2 2 0 1 0 0-.1M8 21l3-6 3 2v5M10 9l-3 4 4 2 2-4 3 3"/></svg></span>
+                <div><b>Прогулка</b><span>Брелок сам считает шаги. Просто носи Пипа с собой.</span></div></div>
+            </div>
+
+            <h3>Звуки</h3>
+            <div class="tiles two">
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M3 8h10a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h7"/></svg></span>
+                <div><b>Подуть</b><span>Пип зажмурится от ветра. Мокрого после мытья это высушит, а если дуть слишком долго, он замёрзнет.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M19 5l-3 3M8 16l-3 3"/></svg></span>
+                <div><b>Громкий хлопок</b><span>Пип пугается хлопка или стука рядом. Испуг пройдёт сам, а если погладить — сразу.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></span>
+                <div><b>Музыка</b><span>Включи песню рядом или на iPhone — если Пип в настроении, он пустится в пляс.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M3 12h2M7 8v8M11 5v14M15 9v6M19 11v2"/></svg></span>
+                <div><b>Когда не нравится</b><span>Любую из этих реакций можно отключить на панели: «Настройки» → «Что Пип замечает».</span></div></div>
+            </div>
+          </article>
+
+          <article class="dsec" id="d-care">
+            <span class="kicker">Уход</span>
+            <h2>Что ему нужно</h2>
+            <p class="lead">Шесть потребностей понемногу убывают сами. Посмотреть их можно в меню, в строке <b>Пип</b>: там же
+              видно, сколько ему дней и сколько шагов он прошёл сегодня.</p>
+            <div class="needs">
+              <div><i style="--c:#ffffff"></i><b>Настрой</b><span>Общее самочувствие. Сытый, отдохнувший и обласканный Пип доволен.</span></div>
+              <div><i style="--c:#ff9a3d"></i><b>Еда</b><span>Подержи нижнюю кнопку — упадёт печенье.</span></div>
+              <div><i style="--c:#ffd60a"></i><b>Энергия</b><span>Сон, лучше всего экраном вниз.</span></div>
+              <div><i style="--c:#30d158"></i><b>Веселье</b><span>Игры, особенно с самим Пипом.</span></div>
+              <div><i style="--c:#ff6482"></i><b>Внимание</b><span>Ласка и время, проведённое вместе.</span></div>
+              <div><i style="--c:#64d2ff"></i><b>Прогулки</b><span>Носи брелок с собой.</span></div>
+              <div><i style="--c:#bf5af2"></i><b>Чистота</b><span>Нажми нижнюю кнопку и сразу подержи.</span></div>
+              <div><i style="--c:#e8e6e1"></i><b>Доверие</b><span>Растёт от заботы и падает от грубости.</span></div>
+            </div>
+            <div class="strip">
+              <figure class="shot"><img src="guide/feed.webp" alt="" loading="lazy"><figcaption>Печенье</figcaption></figure>
+              <figure class="shot"><img src="guide/dirty.webp" alt="" loading="lazy"><figcaption>Пора помыть</figcaption></figure>
+              <figure class="shot"><img src="guide/wash.webp" alt="" loading="lazy"><figcaption>Мытьё</figcaption></figure>
+              <figure class="shot"><img src="guide/m_asleep.webp" alt="" loading="lazy"><figcaption>Сладкий сон</figcaption></figure>
+            </div>
+            <div class="tiles two">
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 9h.01M15 8h.01M10 14h.01M15 15h.01M12 11h.01"/></svg></span>
+                <div><b>Не перекорми</b><span>Сытому Пипу от печенья станет нехорошо, а потом он и вовсе откажется есть.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M12 3s5 6 5 10a5 5 0 0 1-10 0c0-4 5-10 5-10z"/></svg></span>
+                <div><b>После мытья</b><span>Пип мокрый и капает. Подуй на него — он высохнет и довольно фыркнет.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M4 12h16M12 4v16" transform="rotate(45 12 12)"/><circle cx="12" cy="12" r="9"/></svg></span>
+                <div><b>Чистого не мой</b><span>Немного пыльного мыть можно — ему приятно. А совсем чистый возмутится, и если мыть его два раза подряд, в третий раз просто не дастся. Отмылся — отпусти кнопку: тереть дальше ему надоест.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M9 12h6M12 9v6"/><circle cx="12" cy="12" r="9"/></svg></span>
+                <div><b>Грязь и простуда</b><span>Если долго не мыть, Пип заболеет. Замёрзнет мокрым — тоже. Помой и согрей — и через несколько часов он поправится.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M5 9c3-3 6 3 9 0s4-2 5 0M5 15c3-3 6 3 9 0s4-2 5 0"/></svg></span>
+                <div><b>Икота</b><span>После печенья или долгого смеха Пип иногда икает. Лучшее средство — напугать его.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><circle cx="8" cy="15" r="3"/><circle cx="15" cy="10" r="4"/><circle cx="18" cy="17" r="2"/></svg></span>
+                <div><b>Конфузы</b><span>После еды Пип может рыгнуть, а то и пукнуть. Потом ему неловко, а иногда, наоборот, смешно. Чихать, рыгать и пукать можно запретить в «Неловких звуках» под «Болтливостью».</span></div></div>
+            </div>
+          </article>
+
+          <article class="dsec" id="d-character">
+            <span class="kicker">Характер</span>
+            <h2>Каким будет твой Пип</h2>
+            <p class="lead">Характер решает, сколько заботы нужно Пипу. Выбирается он только на панели и меняется в любой момент.</p>
+            <div class="chars">
+              <div><span class="dots"><i class="on"></i><i></i><i></i></span><b>Неприхотливый</b>
+                <ul><li>печенье раз в день</li><li>короткие прогулки</li><li>легко обыграть</li><li>дольше всех держится без еды</li></ul></div>
+              <div class="on"><span class="dots"><i class="on"></i><i class="on"></i><i></i></span><b>Уравновешенный</b><small>по умолчанию</small>
+                <ul><li>печенье два раза в день</li><li>прогулка каждый день</li><li>иногда просит поиграть</li><li>играет в полную силу</li></ul></div>
+              <div><span class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></span><b>Требовательный</b>
+                <ul><li>часто хочет есть</li><li>долгие прогулки и игры</li><li>спит только экраном вниз</li><li>обыграть его трудно</li></ul></div>
+            </div>
+          </article>
+
+          <article class="dsec" id="d-moods">
+            <span class="kicker">Эмоции</span>
+            <h2>Настроение</h2>
+            <p class="lead">У Пипа десятки эмоций, и он сам решает, какую показать. Настроение у него не скачет: грусть
+              без причины не сменится радостью в один миг, он придёт к ней постепенно.</p>
+            <div class="strip">
+              <figure class="shot"><img src="guide/hero.webp" alt="" loading="lazy"><figcaption>Радость</figcaption></figure>
+              <figure class="shot"><img src="guide/m_love.webp" alt="" loading="lazy"><figcaption>Любовь</figcaption></figure>
+              <figure class="shot"><img src="guide/m_curious.webp" alt="" loading="lazy"><figcaption>Любопытство</figcaption></figure>
+              <figure class="shot"><img src="guide/m_sleepy.webp" alt="" loading="lazy"><figcaption>Сонливость</figcaption></figure>
+              <figure class="shot"><img src="guide/m_sad.webp" alt="" loading="lazy"><figcaption>Грусть</figcaption></figure>
+              <figure class="shot"><img src="guide/m_angry.webp" alt="" loading="lazy"><figcaption>Злость</figcaption></figure>
+            </div>
+            <h3>Откуда оно берётся</h3>
+            <div class="tiles three">
+              <div class="tile col"><span class="ti"><svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg></span>
+                <b>Нужды</b><span>Голодный злится, уставший клюёт носом, одинокий грустит, а грязный морщится.</span></div>
+              <div class="tile col"><span class="ti"><svg viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></span>
+                <b>События</b><span>Победа, испуг, вкусное печенье или обида ещё долго видны по глазам.</span></div>
+              <div class="tile col"><span class="ti"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></span>
+                <b>Его день</b><span>Одно утро выдаётся удачным, другое — не очень, а к вечеру Пип успокаивается.</span></div>
+            </div>
+            <h3>Сам по себе</h3>
+            <p>Когда его никто не трогает, Пип живёт своей жизнью: оглядывается, зевает, напевает, мечтательно смотрит вдаль,
+              что-то хитро замышляет, закатывает глаза, поёт, следит за бабочкой, надевает очки, жонглирует, показывает фокусы, ночью смотрит на звёзды или считает овец, а иногда прикидывается спящим, чтобы тебя разыграть. На прогулке он хвастается силой: достань его из кармана — и он поднимет штангу. Бывает, он
+              задумается — и его осенит: «Ага!» Когда ты рядом, он любуется тобой или нетерпеливо ждёт, когда же вы поиграете.</p>
+            <p>А ещё Пип болтает: довольный весело лопочет, сердитый ворчит под нос, а в шутливом настроении дразнится
+              «бе-бе-бе». Сколько он говорит, выбирается на панели: <b>Тихоня</b>, <b>Обычный</b> или <b>Болтун</b>.</p>
+            <h3>Особые дни</h3>
+            <div class="tiles two">
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.5 6.6 19.5l1.2-6-4.5-4.2 6.1-.7z"/></svg></span>
+                <div><b>Редкие состояния</b><span>Изредка Пип влюбляется, мёрзнет, перегревается, чихает от аллергии или бродит зомби. Что случится — зависит от времени года и того, как прошёл его день.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M4 21h16M5 21v-7h14v7M12 14v-3M12 8a1.5 1.5 0 0 1-1.5-1.5C10.5 5 12 3 12 3s1.5 2 1.5 3.5A1.5 1.5 0 0 1 12 8z"/></svg></span>
+                <div><b>Твой день рождения</b><span>Укажи дату на панели в «Что Пип замечает» → «Дни рождения». В этот день Пип споёт тебе, устроит хлопушки и будет праздновать до вечера.</span></div></div>
+            </div>
+          </article>
+
+          <article class="dsec" id="d-play">
+            <span class="kicker">Веселье</span>
+            <h2>Игры с Пипом</h2>
+            <p class="lead">Веселее всего Пипу играть с тобой. Но уставший, сонный или обиженный Пип играть не станет: вместо
+              игры появится «Пип устал».</p>
+            <div class="tiles three">
+              <div class="tile col"><span class="ti"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r=".6"/></svg></span>
+                <b>Догонялки</b><span>Води пальцем по экрану, не останавливаясь, — Пип начнёт прыгать за ним и ловить.</span></div>
+              <div class="tile col"><span class="ti"><svg viewBox="0 0 24 24"><path d="M4 18h3V9H4zM10.5 18h3V5h-3zM17 18h3v-6h-3z"/></svg></span>
+                <b>Ритм</b><span>Простучи нижней кнопкой четыре ровных удара. Пип ответит своим ритмом, а ты повтори.</span></div>
+              <div class="tile col"><span class="ti"><svg viewBox="0 0 24 24"><path d="M5 4v6M19 14v6"/><circle cx="12" cy="12" r="1.6"/></svg></span>
+                <b>Пинг-понг</b><span>Игра до пяти очков. Когда Пип ведёт, он начинает поддаваться.</span></div>
+              <div class="tile col"><span class="ti"><svg viewBox="0 0 24 24"><path d="M12 3v5M12 16v5M3 12h5M16 12h5"/><circle cx="12" cy="12" r="2"/></svg></span>
+                <b>Повтори за мной</b><span>Пип смотрит в разные стороны и поёт по ноте, а ты повторяешь свайпами или касаниями. Запомнишь длинную цепочку — победа твоя.</span></div>
+              <div class="tile col"><span class="ti"><svg viewBox="0 0 24 24"><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg></span>
+                <b>Крестики-нолики</b><span>У каждого только три знака: четвёртый стирает самый старый. Можно играть и с другом.</span></div>
+              <div class="tile col"><span class="ti"><svg viewBox="0 0 24 24"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/></svg></span>
+                <b>Кто победил</b><span>Пип радуется победе и грустит, проиграв. Если обыгрывать его раз за разом, он расстроится всерьёз.</span></div>
+            </div>
+            <p class="muted">Насколько трудно обыграть Пипа, зависит от его характера.</p>
+          </article>
+
+          <article class="dsec" id="d-bond">
+            <span class="kicker">Вместе</span>
+            <h2>Отношения</h2>
+            <p class="lead">Любовь и веселье Пипа держатся только на твоём внимании. Всё, что ты делаешь с брелоком, идёт
+              в счёт: ласка, игры, еда, даже монетка или змейка.</p>
+            <div class="tiles two">
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M10 2h4"/></svg></span>
+                <div><b>Сколько внимания нужно</b><span>Неприхотливому хватает минут пяти в день, Уравновешенному — 10–15, Требовательному — 20–25. Новорождённому первые дни чуть больше.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
+                <div><b>Доверие</b><span>Копится неделями. Того, кого гладят и вовремя кормят, ждёт смелость: он сам будет здороваться. Того, кого бросают и будят, — пугливость.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M3 12h4l2-3 3 6 2-3h7"/><circle cx="12" cy="12" r="10"/></svg></span>
+                <div><b>Обида</b><span>Злость проходит не сразу. Пока Пип не остыл, он может отказаться от еды, мытья и игр.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg></span>
+                <div><b>Как помириться</b><span>Гладь его долго, не отпуская. Сначала он дуется, потом смущается и наконец тает.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M12 7v5M12 15h.01"/></svg></span>
+                <div><b>Ревность</b><span>Если всё внимание достаётся телефону, Пип может надуться. Погладь его.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/><path d="M17 3h3l-3 4h3"/></svg></span>
+                <div><b>Плохая ночь</b><span>Если уведомления всю ночь не давали спать, утром Пип проснётся сердитым.</span></div></div>
+            </div>
+          </article>
+
+          <article class="dsec dwarn" id="d-forget">
+            <span class="kicker">Важно</span>
+            <h2>Если о Пипе забыть</h2>
+            <p>Без сна, игр или мытья Пипу плохо, но не смертельно. А вот если его <b>несколько дней не кормить</b>, он
+              умрёт. На экране останется надпись и число прожитых дней, а брелок перестанет откликаться.</p>
+            <p class="muted">Неприхотливый продержится около трёх суток, Уравновешенный — двое, Требовательный — чуть больше
+              одних. Обновление прошивки Пипа не вернёт: завести нового можно только через «Прошить начисто».</p>
+          </article>
+
+          <article class="dsec" id="d-apps">
+            <span class="kicker">Меню</span>
+            <h2>Приложения</h2>
+            <p class="lead">Меню — это колесо из слов: листай его пальцем и открывай строку посередине верхней кнопкой. Первая
+              строка, <b>Пип</b>, — его шкалы, возраст и шаги. Пока ты в меню или приложении, Пип отдыхает: молчит и не замечает тряски.</p>
+
+
+            <h3>Игры</h3>
+            <div class="tiles two">
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg></span><div><b>Крестики-нолики</b><span>С Пипом или с другом.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M5 4v6M19 14v6"/><circle cx="12" cy="12" r="1.6"/></svg></span><div><b>Пинг-понг</b><span>С Пипом, до пяти очков.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M12 3v5M12 16v5M3 12h5M16 12h5"/><circle cx="12" cy="12" r="2"/></svg></span><div><b>Повтори за мной</b><span>Запомни мелодию Пипа.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M4 18h8a4 4 0 0 0 0-8H8a4 4 0 0 1 0-8h10"/><circle cx="20" cy="2.5" r="1"/></svg></span><div><b>Змейка</b><span>Свайп или касание сбоку поворачивает. Верхняя кнопка — пауза.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><rect x="5" y="9" width="5" height="7" rx="2.5"/><rect x="13" y="9" width="5" height="7" rx="2.5"/><path d="M2 3v4M2 17v4M22 3v6M22 15v6"/></svg></span><div><b>Flappy Pip</b><span>Касание подбрасывает глаза Пипа. Пролетай между колоннами.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 16s-3-2-3-4a1.5 1.5 0 0 1 3-.5 1.5 1.5 0 0 1 3 .5c0 2-3 4-3 4z"/></svg></span><div><b>Шарик</b><span>Наклоняй брелок и собирай сердечки, не задевая край.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M3 3h18v18H3zM3 9h8M15 3v8M9 15h12M9 15v6"/></svg></span><div><b>Лабиринт</b><span>Наклонами докати шарик до цели.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="10" r="2"/><circle cx="12" cy="14.5" r="2.5"/></svg></span><div><b>Шар предсказаний</b><span>Задай вопрос и встряхни.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/></svg></span><div><b>Монетка</b><span>Встряхни: орёл или решка?</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8.5 8.5h.01M15.5 15.5h.01M12 12h.01"/></svg></span><div><b>Кубик</b><span>Встряхни и брось.</span></div></div>
+            </div>
+            <p class="muted">Пока идёт игра, экран не гаснет, даже если ты только наклоняешь брелок.</p>
+
+            <h3>Утилиты</h3>
+            <div class="tiles two">
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span><div><b>Часы</b><span>Время и дата приходят с iPhone или с панели.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4M10 2h4"/></svg></span><div><b>Таймер</b><span>Прозвенит, даже если из него выйти.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 13l3-3M10 2h4M19 6l1-1"/></svg></span><div><b>Секундомер</b><span>Верхняя кнопка — старт и круг, касание — пауза, нижняя — сброс.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M3 12h2M7 8v8M11 5v14M15 9v6M19 11v2"/></svg></span><div><b>Шумомер</b><span>Покажет, насколько вокруг шумно.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M9 2h6l-1 7h-4zM10 9h4v13h-4z"/></svg></span><div><b>Фонарик</b><span>Проведи пальцем вбок, чтобы сменить яркость.</span></div></div>
+            </div>
+
+            <h3>Телефон</h3>
+            <div class="tiles two">
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg></span><div><b>Уведомления</b><span>Последние десять сообщений.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></span><div><b>Музыка</b><span>Пауза и треки на iPhone.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></span><div><b>Камера</b><span>Кнопка брелока делает снимок на телефоне.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M5 19a10 10 0 0 1 14 0M8 15.5a6 6 0 0 1 8 0"/><circle cx="12" cy="12" r="1.6"/><path d="M4 9a12 12 0 0 1 16 0"/></svg></span><div><b>Локатор</b><span>Поможет найти телефон поблизости.</span></div></div>
+            </div>
+            <p class="muted">Подробнее — в разделе «Телефон».</p>
+
+            <h3>Настройки</h3>
+            <div class="tiles two">
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 9a4 4 0 0 1 0 6"/></svg></span><div><b>Звуки</b><span>Громкость голоса Пипа и меню, отдельно.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><circle cx="13.5" cy="6.5" r="1"/><circle cx="17.5" cy="10.5" r="1"/><circle cx="8.5" cy="7.5" r="1"/><path d="M12 2a10 10 0 0 0 0 20c1 0 2-1 1.5-2.2-.5-1.3.5-2.8 2-2.8H18a4 4 0 0 0 4-4c0-5-4.5-11-10-11z"/></svg></span><div><b>Темы</b><span>Оформление меню и приложений.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></span><div><b>Яркость</b><span>Нажми на шкалу — экран станет ярче или темнее.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></span><div><b>Глаза</b><span>Десять цветов на выбор.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span><div><b>Приватность</b><span>Что показывать в уведомлениях и нужны ли звонки.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M7 7l10 10-5 4V3l5 4L7 17"/></svg></span><div><b>Bluetooth</b><span>Подключённые устройства: переподключить или забыть.</span></div></div>
+            </div>
+
+            <h3>Темы</h3>
+            <div class="themes">
+              <div class="theme t0"><span class="tw">Меню</span><b>Стандартная</b><small>чёрная с оранжевым</small></div>
+              <div class="theme t1"><span class="tw">&gt; МЕНЮ_</span><b>Ретро</b><small>терминал из клеток</small></div>
+              <div class="theme t2"><span class="tw">Меню</span><b>Барби</b><small>розовая, рукописная</small></div>
+            </div>
+            <p class="muted">Тема меняет меню и приложения, а Пип остаётся собой. Порядок строк и их названия можно поменять
+              на панели, в «Меню брелока».</p>
+          </article>
+
+          <article class="dsec" id="d-iphone">
+            <span class="kicker">Связь</span>
+            <h2>Телефон</h2>
+            <div class="steps-mini">
+              <div><b>1</b><span>На телефоне открой «Настройки» → Bluetooth и выбери <b>Pip</b></span></div>
+              <div><b>2</b><span>Сверь код на экранах и нажми «Подтвердить» на брелоке</span></div>
+              <div><b>3</b><span>Готово: дальше брелок будет подключаться сам</span></div>
+            </div>
+            <div class="tiles two">
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg></span>
+                <div><b>Уведомления</b><span>Выезжают сверху на пару секунд. Коды, пароли и сообщения банков брелок не показывает.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg></span>
+                <div><b>Звонки</b><span>Верхняя кнопка — ответить, нижняя — отклонить.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></span>
+                <div><b>Музыка</b><span>Управляй песнями на iPhone. Под музыку из телефона Пип тоже танцует.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></span>
+                <div><b>Камера</b><span>Открой камеру на телефоне и «Камеру» на брелоке — снимок по верхней кнопке.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M5 19a10 10 0 0 1 14 0M8 15.5a6 6 0 0 1 8 0"/><circle cx="12" cy="12" r="1.6"/><path d="M4 9a12 12 0 0 1 16 0"/></svg></span>
+                <div><b>Локатор</b><span>Ходи с брелоком: подсказки «теплее» и «холоднее» и всё более частый писк приведут к телефону.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span>
+                <div><b>Приватность</b><span>Текст сразу, по нажатию или вовсе без уведомлений. Звонки отключаются там же.</span></div></div>
+            </div>
+            <div class="tip"><b>Android</b> тоже подключается, но уведомления и музыка с ним не работают. Камера и локатор —
+              работают, а время брелок узнает от панели.</div>
+            <p class="muted">Пока Пип спит экраном вниз, уведомления и звонки его не тревожат.</p>
+          </article>
+
+          <article class="dsec" id="d-power">
+            <span class="kicker">Энергия</span>
+            <h2>Экран и батарея</h2>
+            <div class="tiles two">
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></span>
+                <div><b>Сон экрана</b><span>Если брелок не трогать, экран погаснет, а Пип задремлет. Через сколько — выбирается на панели.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4"/></svg></span>
+                <div><b>Пробуждение</b><span>Коснись экрана или нажми кнопку. С «Просыпается от движения» хватит просто взять брелок в руку.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="18" height="10" rx="2"/><path d="M22 11v2M7 10l-2 2h4l-2 2"/></svg></span>
+                <div><b>Зарядка</b><span>Пип ей радуется: бодрого будто бьёт молния, а уставший пьёт ток глотками. И понемногу наедается. Снимай его на 80–95% — ему это нравится.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="18" height="10" rx="2"/><path d="M22 11v2M6 10v4M10 10v4M14 10v4"/></svg></span>
+                <div><b>Не держи на проводе</b><span>Полному Пипу долго на зарядке плохо: он злится, а потом грустит. И не дёргай кабель туда-сюда. А если батарея сядет до нуля и он выключится, то проснётся голодным, уставшим и злым.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><path d="M12 2 4 14h7l-1 8 9-12h-7z"/></svg></span>
+                <div><b>Энергосбережение</b><span>Брелок работает дольше, но Пип не слышит дуновения и музыки, а при тёмном экране не приходят уведомления.</span></div></div>
+              <div class="tile"><span class="ti"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/></svg></span>
+                <div><b>Автояркость</b><span>Когда батарея садится, экран сам становится темнее.</span></div></div>
+            </div>
+            <p class="muted">Когда батарея почти пуста, Пип устаёт. Совсем разряженный брелок выключится сам, сохранив Пипа.</p>
+          </article>
+
+          <article class="dsec" id="d-panel">
+            <span class="kicker">Панель</span>
+            <h2>Эта страница</h2>
+            <p class="lead">Здесь настраивается всё, чего нет на самом брелоке: характер, сон экрана, что Пип замечает,
+              день рождения и меню. Отсюда же обновляется прошивка.</p>
+            <div class="tiles three">
+              <div class="tile col"><span class="ti"><svg viewBox="0 0 24 24"><path d="M9 3v4M15 3v4M7 7h10v5a5 5 0 0 1-10 0V7zM12 17v4"/></svg></span>
+                <b>Подключи</b><span>Кабелем USB-C или по Bluetooth — кнопками вверху страницы.</span></div>
+              <div class="tile col"><span class="ti"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h7"/><path d="M16 16l2 2 4-4"/></svg></span>
+                <b>Настрой</b><span>Меняй что хочешь, а потом нажми «Применить изменения» внизу.</span></div>
+              <div class="tile col"><span class="ti"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></span>
+                <b>Обнови</b><span>Когда выйдет новая версия, панель сама предложит обновиться. Пип и настройки сохранятся.</span></div>
+            </div>
+            <p class="muted">Пока брелок подключён к панели, на нём горит «Режим настройки»: Пип не отзывается на кнопки и касания.
+              Нужен Chrome или Edge; на Android — только Bluetooth.</p>
+          </article>
+
+          <article class="dsec" id="d-faq">
+            <span class="kicker">Помощь</span>
+            <h2>Вопросы</h2>
+            <details><summary>Экран чёрный, и ничего не происходит</summary><p>Скорее всего, Пип спит. Нажми любую кнопку.</p></details>
+            <details><summary>Пип всё время злится или грустит</summary><p>Открой в меню строку «Пип» и посмотри, какая шкала
+              опустела. Чаще всего ему не хватает еды, прогулки или ласки.</p></details>
+            <details><summary>Пип не ест</summary><p>Он сыт или обижен. Подожди немного, а обиженного погладь.</p></details>
+            <details><summary>Вместо игры написано «Пип устал»</summary><p>Пип устал, спит или обиделся. Дай ему отдохнуть, а если
+              обиделся — подольше погладь.</p></details>
+            <details><summary>Пип не реагирует, когда на него дуют</summary><p>Дуй прямо на брелок, ровно, пару секунд. Проверь на панели, что «Дуновение» включено, а энергосбережение — нет.</p></details>
+            <details><summary>Часы пишут, что время не синхронизировано</summary><p>Брелок выключался и забыл время. Подключи
+              iPhone по Bluetooth или открой эту панель — время установится само.</p></details>
+            <details><summary>Как выключить брелок?</summary><p>Подержи верхнюю кнопку несколько секунд.</p></details>
+            <details><summary>Что сохранится после обновления?</summary><p>Всё: сам Пип, настройки, меню и связь с телефоном.
+              Стереть всё может только «Прошить начисто».</p></details>
+            <details><summary>Пип умер. Его можно вернуть?</summary><p>Этого Пипа — нет. Но «Прошить начисто» подарит тебе нового.</p></details>
+          </article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>На странице используется Web Serial (USB-C) и Web Bluetooth (BLE). Работает только в Chrome и Edge</footer>
+</div>
+<div class="applybar" id="applyBar" role="region" aria-label="Изменения настроек" aria-hidden="true">
+  <span class="adot"></span><span id="applyText">Есть изменения</span>
+  <button class="ghost" id="applyUndo" tabindex="-1">Отменить</button>
+  <button class="main" id="applyGo" tabindex="-1">Применить изменения</button>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"><i></i><span></span></div>
+
+<script src="firmware/version.js"></script>
+<script type="module">
+const $ = id => document.getElementById(id);
+/* pip_feature() switches: [index, name, note, needs the mic]. 3 (his voice) is not something he notices: how loud his
+   voice and the menu's clicks are is the "sound p u" command (0..5 each, the Звуки app) in "Оформление и звук". Energy saving closes the mic,
+   so the ones that listen go dark with it. */
+const FEATS = [ /* in the order shown: two to a row */
+  [0, 'Тряска', 'встряхнёшь — закружится голова'],
+  [10, 'Перевороты', 'кувыркается от восторга'],
+  [1, 'Дуновение', 'подуешь — зажмурится', true],
+  [6, 'Громкие звуки', 'пугается хлопков', true],
+  [7, 'Музыка', 'танцует под музыку', true],
+  [2, 'Сон экраном вниз', 'уснёт, экран погаснет'],
+  [4, 'Еда от зарядки', 'наедается на зарядке'],
+  [8, 'Падения', 'пугается и обижается'],
+];
+/* his body's noises (PIP_F_SNEEZE, BURP, TOOT): pip_feature switches too, shown under Болтливость */
+const BODY = [
+  [11, 'Чихает', 'от пыли, щекотки и аллергии'],
+  [12, 'Рыгает', 'после печенья, если переел или грязный'],
+  [13, 'Пукает', 'когда сыт и просто так'],
+];
+const FEAT_IDS = [...FEATS, ...BODY].map(f => f[0]);
+/* The board is reached by Web Serial (cable) or Web Bluetooth. What counts is whether this browser really has them
+   (asked of the API itself, not of its name): Chrome and Edge have both, some others one (Zen: the cable), Chrome on
+   Android only Bluetooth, Safari neither. With neither the panel says so at once and the buttons stay in sight, unpressable. */
+const hasSerial = !!(navigator.serial && typeof navigator.serial.requestPort === 'function');
+const hasBle = !!(navigator.bluetooth && typeof navigator.bluetooth.requestDevice === 'function');
+const noWay = (b, why) => { b.disabled = true; b.title = why; b.setAttribute('aria-disabled', 'true'); };
+if (!hasSerial && hasBle) { /* Chrome on Android: Bluetooth only (settings, the clock), no cable and no flashing */
+  for (const id of ['usb', 'flash', 'flashClean']) noWay($(id), 'В этом браузере только Bluetooth. Кабель и прошивка — из Chrome или Edge на компьютере');
+} else if (!hasSerial) {
+  $('nobrowser').hidden = false;
+  $('nobrowserText').innerHTML = 'Этот браузер не умеет подключаться к брелоку: в нём нет Web Serial и Web Bluetooth. Используй <b>Google Chrome</b> или <b>Microsoft Edge</b>';
+  for (const id of ['usb', 'ble', 'flash', 'flashClean']) noWay($(id), 'Браузер не умеет подключаться к брелоку: нужен Chrome или Edge');
+} else if (!hasBle) noWay($('ble'), 'В этом браузере нет Bluetooth для сайтов. Подключайся кабелем');
+/* the page carries only what the firmware is (version.js: version, date, size); the image itself (firmware.js,
+   ~2.5 MB) is fetched when "Обновить" or "Прошить начисто" is pressed (loadFirmware), so a slow link (GitHub Pages)
+   does not hold the page up */
+const fw = window.PIP_FIRMWARE_INFO || window.PIP_FIRMWARE;
+$('fwinfo').textContent = fw ? `Версия в панели: ${fw.version} от ${fw.built.split('-').reverse().join('.')}` : 'Файл прошивки не найден (docs/firmware/version.js)';
+
+/* ---------- the link: a USB serial port (Web Serial) or Bluetooth ---------- */
+let port = null, reader = null, ble = null, bleq = Promise.resolve(), serq = Promise.resolve(), alive = 0, cfg = null;
+const enc = new TextEncoder();
+async function send(c) {
+  if (port && port.writable) { /* one writer at a time: a second getWriter() while a write holds the lock throws */
+    const p = port, b = enc.encode(c + '\n');
+    const done = serq.then(async () => { const w = p.writable.getWriter(); try { await w.write(b); } finally { w.releaseLock(); } });
+    serq = done.catch(() => {});
+    return done;
+  }
+  else if (ble) { /* in 20-byte writes: fits the smallest MTU; the board joins them up to the newline */
+    const b = enc.encode(c + '\n');
+    const ch = ble;
+    let done = bleq;
+    for (let i = 0; i < b.length; i += 20) done = done.then(() => ch.writeValueWithoutResponse(b.slice(i, i + 20)));
+    bleq = done.catch(() => {}); /* the queue goes on; the caller hears of a failed write */
+    return done;
+  }
+  throw new Error('нет связи');
+}
+/* the computer's clock and zone: the keychain has no clock of its own after power off, and without this only the iPhone gives the date */
+function sendTime() { timeSent = Date.now(); return send(`time ${Math.round(Date.now() / 1000)} ${-new Date().getTimezoneOffset()}`).catch(() => {}); }
+let timeSent = 0;
+/* left linked for days (the panel open, the keychain on its cable): the clock is set again once a day, it drifts asleep */
+setInterval(() => { if ((port || ble) && cfg && !flashing) sendTime(); }, 24 * 3600 * 1000);
+/* "panel 1" every 2 s while linked: Pip shows "РЕЖИМ НАСТРОЙКИ" and takes no touches or keys; three missed (the tab
+   shut, the cable out) and he is his own again. "panel 0" lets him go at once. */
+setInterval(() => { if ((port || ble) && !flashing) send('panel 1').catch(() => {}); }, 2000);
+function panelOff() { if (port || ble) return send('panel 0').catch(() => {}); }
+addEventListener('pagehide', panelOff);
+/* One line from the board. A log line from another of its tasks can land in the middle of a status line (a touch or
+   a key logs at once): such a line is dropped, never let through to break the reading loop (it went quiet for good:
+   "Пип перестал отвечать" after any press on the keychain) */
+function onLine(l) { try { lineIn(l); } catch (e) { /* a garbled line: the next one comes in a second */ } }
+function lineIn(l) {
+  if (l.startsWith('@S ')) {
+    alive = Date.now();
+    /* it answers again after "не отвечает" (a slow boot, a long flash): linked again, and its settings asked anew */
+    if (!document.body.classList.contains('linked') && !connecting() && linked() && !flashing) { linkStart(linkText); send('config').catch(() => {}); }
+    const s = JSON.parse(l.slice(3));
+    gotS = true;
+    /* its clock is not the computer's (never set since power-on, a reset mid-link, a drift): set it, at most every 10 s */
+    if (cfg && !flashing && s.t && Math.abs(s.t - Date.now() / 1000) > 30 && Date.now() - timeSent > 10000) sendTime();
+    $('age').textContent = ageText(s.age);
+    $('bat').textContent = s.bat >= 0 ? `${s.bat}%${s.ch ? ' · заряжается' : ''}` : '—';
+    linkReady();
+  } else if (l.startsWith('@C ')) {
+    const first = !cfg;
+    cfg = JSON.parse(l.slice(3));
+    if (connecting()) { cfgAt = Date.now(); linkReady(); } else fill(); /* still linking: filled once it is all in */
+    if (first || cfg.clk === 0) { sendTime(); send('panel 1').catch(() => {}); } /* every link sets the clock, whatever it was */
+    if (first && !document.querySelector('section[data-tab=dev]').hidden) batFetch(); /* linked with the log in view */
+  }
+  else if (l.startsWith('@M ')) { try { menuFromBoard(JSON.parse(l.slice(3))); } catch (e) {} }
+  else if (l.startsWith('@B ') && batRows) {
+    if (l === '@B end') batGot(batRows), batRows = null;
+    else batRows.push(l.slice(3));
+  }
+}
+async function readLoop() {
+  const dec = new TextDecoder();
+  let acc = '';
+  try {
+    while (port && port.readable) {
+      reader = port.readable.getReader();
+      for (;;) {
+        const {value, done} = await reader.read();
+        if (done) break;
+        acc += dec.decode(value, {stream: true});
+        let i;
+        while ((i = acc.indexOf('\n')) >= 0) { onLine(acc.slice(0, i).replace(/\r$/, '')); acc = acc.slice(i + 1); }
+      }
+      reader.releaseLock();
+    }
+  } catch (e) { /* unplugged */ }
+  reader = null;
+}
+let linkText = '';
+/* Linking is a stage of its own: from the button (the port or the device picked) until the board has told its settings
+   (@C) and its status (@S: age, battery) the panel stays locked under a loader (#linking), so nothing shows or can be
+   changed before Pip's real values are in. It ends in linkReady, or in state(..., false) on any failure. */
+/* quiet: the links a flash makes itself (before it, and after it to set the clock): no loader over the page - the flash's
+   own line says what goes on, and its end is told at once (a toast), not after a loader */
+let gotS = false, cfgAt = 0, linkAsk = 0, linking = false, linkQuiet = false;
+const connecting = () => linking;
+function linkStart(text, quiet) { /* quiet: the pill's word for it instead of the loader */
+  state(quiet || 'Подключение…', false); /* locked, the last link's values gone (cfg too) */
+  linkText = text; gotS = false; cfgAt = 0; linking = true; linkQuiet = !!quiet;
+  if (!quiet) {
+    document.body.classList.add('connecting');
+    $('heroTitle').textContent = 'Подключаюсь к Пипу…';
+    $('needlink').textContent = 'Получаю настройки брелока. Это займёт несколько секунд';
+  }
+  clearInterval(linkAsk);
+  let tries = 0;
+  /* ask until it answers: opening the port may reset the keychain (it boots in ~4 s), a Bluetooth line may get lost.
+     Not "flashing": the reconnect after a flash runs under it and lives on this question (with no answer it reopened
+     the port again and again, and each open resets the chip). While esptool has the port, port is null anyway */
+  linkAsk = setInterval(() => {
+    linkReady();
+    if (!connecting()) { clearInterval(linkAsk); return; }
+    if (!linked()) return; /* the port or the GATT link still opening */
+    if (!cfg) send('config').catch(() => {});
+    if (++tries < 12) return;
+    clearInterval(linkAsk);
+    if (linkQuiet) { state('Не подключён', false); return; } /* the flash's own: it says what happened itself */
+    state('Брелок не отвечает', false);
+    $('needlink').textContent = port
+      ? 'Брелок подключён, но не отвечает. Возможно, на нём не прошивка Пипа или он завис: нажми «Обновить» в разделе прошивки или выключи и включи брелок'
+      : 'Пип на связи по Bluetooth, но не отвечает. Разбуди его экран и подключись снова. Если не помогает, подключи его кабелем и нажми «Обновить»';
+  }, 1000);
+}
+/* everything in: the settings and a status line (or 2.5 s after the settings, should no status come) - unlocked */
+function linkReady() {
+  if (!connecting() || !cfg || !linked() || (!gotS && Date.now() - cfgAt < 2500)) return;
+  clearInterval(linkAsk);
+  state(linkText, true);
+  fill();
+}
+async function openPort(p, quiet) {
+  linkStart('Подключён по кабелю', quiet);
+  await p.open({baudRate: 115200}); /* busy in another tab: throws, and nothing counts as linked */
+  port = p;
+  alive = 0; /* the last link's answers say nothing about this one */
+  try { await port.setSignals({dataTerminalReady: false, requestToSend: false}); } catch (e) {}
+  readLoop();
+  send('config').catch(() => {});
+}
+async function closePort() {
+  if (!port) return null;
+  const p = port;
+  port = null;
+  try { if (reader) await reader.cancel(); } catch (e) {}
+  await new Promise(r => setTimeout(r, 100));
+  try { await p.close(); } catch (e) {}
+  return p;
+}
+/* locked controls (no Pip, or an outdated one) are out of reach of the keyboard too, not only of the pointer */
+function lockInert() {
+  const b = document.body.classList, off = !b.contains('linked') || b.contains('outdated');
+  for (const el of document.querySelectorAll('.needs-link')) el.inert = off;
+}
+lockInert(); /* nothing linked yet */
+function state(text, on) {
+  $('state').textContent = text; document.body.classList.toggle('linked', on); document.body.classList.remove('connecting'); linking = false; lockInert();
+  $('heroTitle').textContent = on ? 'Пип на связи' : 'Пип не подключён';
+  if (!on) {
+    cfg = null; /* what an unlinked board had says nothing now ("Обновить" checks it) */
+    $('deadBar').hidden = true;
+    $('needlink').textContent = 'Кабелем USB-C или по Bluetooth. Настройки брелока появятся здесь, а изменения уйдут в него по кнопке «Применить изменения»';
+    lockOutdated(null);
+  }
+  setTimeout(() => { if (!on) batLog = batRows = null; drawBat(); }); /* the log was that board's: the example again */
+}
+/* A failed link in plain words: a short line in the pill, what to do in the hero under it. The browser's own
+   messages are English and say nothing to an owner ("Failed to open serial port"). */
+function fail(short, long) {
+  if (port || ble) { if (short !== 'Брелок не выбран') toast(short, true); return; } /* still linked the other way: that link stands */
+  state(short, false); $('needlink').textContent = long;
+}
+const BUSY = 'Порт брелока занят другой программой. Закрой другие вкладки с панелью, страницу отладки, Arduino IDE или монитор порта и нажми «По кабелю» ещё раз';
+function usbFail(e) {
+  if (e.name === 'NotFoundError') /* the list closed with nothing picked */
+    return fail('Брелок не выбран', 'Пипа не было в списке? Проверь, что он включён, и попробуй другой кабель или USB-порт: некоторые кабели только заряжают и не передают данные');
+  if (e.name === 'SecurityError') return fail('Браузер запретил USB', 'Браузер не дал доступ к USB-устройствам. Разреши его в настройках сайта (значок слева от адреса) и попробуй снова');
+  if (e.name === 'NetworkError' || e.name === 'InvalidStateError' || /open|busy|access/i.test(e.message)) return fail('Порт занят', BUSY);
+  fail('Не удалось подключиться по кабелю', `Отключи кабель, подожди пару секунд, вставь снова и нажми «По кабелю». Если не помогает, перезагрузи брелок (ошибка браузера: ${e.message})`);
+}
+$('usb').onclick = async () => {
+  try { await openPort(await navigator.serial.requestPort({filters: [{usbVendorId: 0x303a}]})); }
+  catch (e) { usbFail(e); }
+};
+let bleDev = null;
+$('ble').onclick = async () => {
+  const SVC = '50495044-4247-4b45-5950-455400000001', RX = '50495044-4247-4b45-5950-455400000002', TX = '50495044-4247-4b45-5950-455400000003';
+  try { if (navigator.bluetooth.getAvailability && !(await navigator.bluetooth.getAvailability()))
+    return fail('Bluetooth выключен', 'На этом устройстве Bluetooth выключен или его нет. Включи Bluetooth в настройках системы и нажми «По Bluetooth» ещё раз'); } catch (e) {}
+  try {
+    const dev = await navigator.bluetooth.requestDevice({filters: [{name: 'Pip'}], optionalServices: [SVC]});
+    linkStart('Подключён по Bluetooth'); /* the GATT link takes a few seconds: the loader from here */
+    const svc = await (await dev.gatt.connect()).getPrimaryService(SVC);
+    const tx = await svc.getCharacteristic(TX);
+    ble = await svc.getCharacteristic(RX);
+    let acc = '';
+    const dec = new TextDecoder(); /* one for the link, streaming: a Cyrillic letter may be split across two notifications */
+    tx.addEventListener('characteristicvaluechanged', e => {
+      acc += dec.decode(e.target.value, {stream: true});
+      let i;
+      while ((i = acc.indexOf('\n')) >= 0) { onLine(acc.slice(0, i)); acc = acc.slice(i + 1); }
+    });
+    await tx.startNotifications();
+    bleDev = dev;
+    dev.addEventListener('gattserverdisconnected', () => { if (bleDev !== dev) return; /* let go on purpose (the debug page) */
+      bleDev = ble = null; cfg = null;
+      fail('Связь по Bluetooth прервалась', 'Пип отошёл слишком далеко, выключился или уснул в режиме экономии. Разбуди его экран и нажми «По Bluetooth» ещё раз'); });
+    alive = 0; /* the last link's answers say nothing about this one */
+    cfg = null; /* its first @C sends the clock */
+    send('config').catch(() => {});
+  } catch (e) { if (!bleDev) ble = null; /* half set up: no link to keep */ bleFail(e); }
+};
+function bleFail(e) {
+  const m = e.message || '';
+  if (/adapter|not available|unavailable/i.test(m))
+    return fail('Bluetooth выключен', 'На этом устройстве Bluetooth выключен или его нет. Включи Bluetooth в настройках системы и нажми «По Bluetooth» ещё раз');
+  if (e.name === 'NotFoundError' && /service|characteristic|UUID/i.test(m))
+    return fail('Это не Пип', 'Устройство нашлось, но не отвечает как Пип: на нём старая или чужая прошивка. Подключи брелок кабелем и нажми «Обновить»');
+  if (e.name === 'NotFoundError') /* the chooser closed with nothing picked */
+    return fail('Брелок не выбран', 'Пипа не было в списке? Разбуди его экран (нажми кнопку) и поднеси ближе: со спящим экраном в режиме экономии Bluetooth выключается');
+  if (e.name === 'SecurityError') return fail('Браузер запретил Bluetooth', 'Браузер не дал доступ к Bluetooth. Разреши его в настройках сайта (значок слева от адреса) и попробуй снова');
+  if (e.name === 'NetworkError' || /GATT|connect/i.test(m))
+    return fail('Не удалось связаться по Bluetooth', 'Пип не ответил. Разбуди его экран, поднеси ближе и попробуй снова. Если не помогает, удали «Pip» из списка Bluetooth-устройств компьютера и подключись заново');
+  fail('Не удалось подключиться по Bluetooth', `Разбуди экран Пипа и попробуй снова (ошибка браузера: ${m || e.name})`);
+}
+setInterval(() => { if ((port || ble) && Date.now() - alive > 4000 && alive && !flashing) { state('Пип перестал отвечать', false); $('needlink').textContent = 'Связь есть, но брелок молчит: он мог выключиться, разрядиться или перезагрузиться. Проверь, что экран включается, и подключи его заново'; } }, 1000);
+/* the cable pulled out: the port is gone, nothing more can be sent over it */
+if (hasSerial) navigator.serial.addEventListener('disconnect', e => {
+  if (port && e.target === port && !flashing) { closePort(); cfg = null; fail('Кабель отключён', 'Кабель вынули или он отошёл. Вставь его и нажми «По кабелю»'); }
+});
+
+/* "1 день", "3 дня", "11 дней" */
+const days = n => { const m10 = n % 10, m100 = n % 100; return `${n} ${m100 >= 11 && m100 <= 14 ? 'дней' : m10 === 1 ? 'день' : m10 >= 2 && m10 <= 4 ? 'дня' : 'дней'}`; };
+/* his age from @S "age": the day of his life (1 on the first), 0 not woken yet after a clean flash, -1 dead */
+const ageText = a => a === undefined ? '—' : a < 0 ? 'умер' : a === 0 ? 'ещё не проснулся' : days(a);
+
+/* ---------- settings ---------- */
+/* the toast: what happened (sent, applied, or nobody to take it) */
+let toastT = 0;
+function toast(text, bad) {
+  const t = $('toast');
+  t.querySelector('span').textContent = text;
+  t.classList.toggle('bad', !!bad);
+  t.classList.add('show');
+  clearTimeout(toastT);
+  toastT = setTimeout(() => t.classList.remove('show'), text.length > 40 ? 4000 : 1600); /* a sentence stays to be read */
+}
+const linked = () => !!(port || ble);
+function offline() { toast('Сначала подключи Пипа', true); }
+/* Settings are staged: each change waits on the panel, keyed by what it sets ("feat 7", "theme"...), until "Применить
+   изменения" sends them all at once (the menu's layout too). Set back as the board has it, it is no change at all, and
+   with nothing left to send the bar goes down again. base: what the board has (its @C, or the defaults it ships with). */
+const staged = new Map(), base = new Map();
+const keyOf = cmd => { const w = cmd.split(' '); return w[0] === 'feat' ? w[0] + ' ' + w[1] : w[0]; };
+const DEFAULT_CFG = {power: 30, bright: 60, eco: 0, abright: 0, theme: 0, privacy: 1, calls: 1, eyes: 0, care: 1, chat: 1, sound: [5, 3], bday: [0, 0], feat: []};
+function baseFrom(c) {
+  base.clear();
+  const b = v => (v ? 1 : 0);
+  for (const cmd of [`power ${c.power}`, `bright ${c.bright}`, `eco ${b(c.eco)}`, `abright ${b(c.abright)}`, `theme ${c.theme}`,
+    `privacy ${c.privacy}`, `calls ${b(c.calls ?? 1)}`, `eyes ${c.eyes || 0}`, `care ${c.care ?? 1}`, `chat ${c.chat ?? 1}`,
+    `sound ${(c.sound || [5, 5])[0]} ${(c.sound || [5, 5])[1]}`, `bday ${(c.bday || [0, 0])[0]} ${(c.bday || [0, 0])[1]}`,
+    ...[...FEAT_IDS, 9].map(f => `feat ${f} ${b(c.feat[f] ?? 1)}`)]) base.set(keyOf(cmd), cmd);
+  for (const [k, cmd] of staged) if (base.get(k) === cmd) staged.delete(k); /* the board has it already */
+  applyBar();
+}
+function set(cmd) {
+  if (document.body.classList.contains('outdated')) { toast('Сначала обнови прошивку', true); return; }
+  const k = keyOf(cmd);
+  if (base.get(k) === cmd) staged.delete(k); else staged.set(k, cmd);
+  applyBar();
+}
+const setNow = cmd => { if (!linked()) { offline(); return; } send(cmd); }; /* tools, not settings: at once */
+const menuDirty = () => sig() !== menuApplied;
+function applyBar() {
+  const n = staged.size + (menuDirty() ? 1 : 0), on = n > 0 || applying;
+  $('applyBar').classList.toggle('show', on);
+  $('applyBar').setAttribute('aria-hidden', !on);
+  document.body.classList.toggle('pending', on);
+  for (const b of ['applyUndo', 'applyGo']) $(b).tabIndex = on ? 0 : -1, $(b).disabled = applying;
+  $('applyText').textContent = applying ? 'Отправляю в брелок…' : 'Есть изменения, они ещё не в брелоке';
+}
+let applying = false;
+$('applyGo').onclick = async () => {
+  if (!linked()) { offline(); return; }
+  applying = true; applyBar();
+  try {
+    for (const cmd of staged.values()) { await send(cmd); await new Promise(r => setTimeout(r, ble ? 70 : 15)); } /* the board's queue is short */
+    if (menuDirty()) { const done = sig(); await menuSend(); menuApplied = done; }
+    if (!linked()) throw new Error('нет связи'); /* the link went down on the way: nothing is known to have arrived */
+    for (const [k, cmd] of staged) base.set(k, cmd);
+    staged.clear();
+    toast('Изменения применены');
+    send('config').catch(() => {}); /* the board's own word on all of it */
+  } catch (e) {
+    toast('Связь прервалась, изменения не применены', true); /* they stay staged for the next link */
+  } finally { applying = false; menuChanged(); applyBar(); }
+};
+$('applyUndo').onclick = () => { /* everything back as the board has it */
+  staged.clear();
+  showSettings(cfg || DEFAULT_CFG);
+  if (menuDirty()) menu = JSON.parse(JSON.stringify(menuBoard)), menuRender();
+  menuChanged(); applyBar();
+};
+/* a group of buttons that behaves as one radio: [value, html] items, the chosen one marked .on */
+function radios(el, items, cls, onPick) {
+  el.innerHTML = items.map(([v, html]) => `<button type="button" role="radio" class="${cls}" data-v="${v}">${html}</button>`).join('');
+  el.onclick = e => { const b = e.target.closest('button'); if (b) { mark(el, b.dataset.v); onPick(b.dataset.v); } };
+}
+function mark(el, v) {
+  el.querySelectorAll('button').forEach(b => { const on = b.dataset.v === String(v); b.classList.toggle('on', on); b.setAttribute('aria-checked', on); });
+}
+
+/* eye colours: the same list as eye_sets[] in ui/pip.c (name, pupil, white); the board answers "eyes" in @C */
+const EYES = [['Стандартный', '#1c1c1c', '#ffffff'], ['Бабл-гам', '#ffffff', '#f542e6'], ['Снежок', '#5878f3', '#ffffff'],
+  ['Карамель', '#e8fca5', '#f673d9'], ['Персик', '#f76e5c', '#fdfbe2'], ['Смузи', '#ce0959', '#feece0'], ['Лазурь', '#ffffff', '#03a9f7'],
+  ['Леди Баг', '#1c1c1c', '#c3110d'], ['Петуния', '#f006b5', '#f7affb'], ['Золотая рыбка', '#df9109', '#e0f4fb']];
+const showEyes = i => {
+  mark($('eyes'), i);
+  const [, pupil, white] = EYES[i] || EYES[0];
+  document.documentElement.style.setProperty('--pupil', pupil);
+  document.documentElement.style.setProperty('--white', white);
+};
+radios($('eyes'), EYES.map(([name, pupil, white], i) =>
+  [i, `<span class="ball" style="background:linear-gradient(90deg,${pupil} 50%,${white} 50%)"></span>${name}`]), '', v => { showEyes(+v); set('eyes ' + v); });
+
+const THEMES = [[0, 'Стандартная', 'чёрная с оранжевым', ['#000', '#ff5a1f', '#e8e6e1']],
+  [1, 'Ретро', 'терминал из клеток', ['#3a1f1b', '#e6d8c3', '#5a3530']],
+  [2, 'Барби', 'розовая, рукописная', ['#200818', '#e82088', '#ffe0f0']]];
+radios($('theme'), THEMES.map(([v, name, note, c]) =>
+  [v, `<span class="swatch">${c.map(x => `<i style="background:${x}"></i>`).join('')}</span>${name}<small>${note}</small>`]), 'opt', v => set('theme ' + v));
+
+/* how much looking after he needs: the same levels as pet.c levels[] */
+const CARE = [[0, 'Неприхотливый', 'Ест раз в день, хватает короткой прогулки, мыть раз в день. Играть можно по желанию, обыграть его легко', 1],
+  [1, 'Уравновешенный', 'Ест два раза в день, гуляет каждый день, мыть раз в день, иногда хочет поиграть', 2],
+  [2, 'Требовательный', 'Ест до трёх раз в день, нужны долгая прогулка и игры каждый день, мыть дважды в день. Спит только экраном вниз, обыграть его трудно, без еды погибает быстрее', 3]];
+radios($('care'), CARE.map(([v, name, note, n]) =>
+  [v, `<span class="dots">${[1, 2, 3].map(k => `<i class="${k <= n ? 'on' : ''}"></i>`).join('')}</span>${name}<small>${note}</small>`]), 'opt', v => { featsShow(); set('care ' + v); });
+
+const PRIVACY = [[1, 'Скрыто', 'приложение и время, текст — по нажатию'], [0, 'Открыто', 'весь текст сразу'],
+  [2, 'Выключены', 'текст не приходит']];
+radios($('privacy'), PRIVACY.map(([v, name, note]) => [v, `${name}<small>${note}</small>`]), 'opt', v => set('privacy ' + v));
+
+const POWER = [[15, '15 с', 'Дольше всего держит заряд'], [30, '30 с', 'Оптимально'], [60, '1 мин', ''], [120, '2 мин', ''],
+  [300, '5 мин', 'Заряд уходит заметно быстрее'], [0, 'Никогда', 'Заряд уйдёт быстро']];
+const powerNote = v => {
+  const p = POWER.find(x => String(x[0]) === String(v));
+  $('powerNote').textContent = (p && p[2] ? p[2] + '. ' : '') + 'Просыпается от касания, кнопки, уведомления'
+    + ($('f9').checked ? ' и когда его берут в руку' : '') + '. Музыка сон не держит. Пока открыты фонарик, шумомер, таймер, секундомер, пинг-понг или камера, не засыпает';
+};
+radios($('power'), POWER.map(([v, name]) => [v, name]), '', v => { powerNote(v); set('power ' + v); });
+/* how much he talks (pip_chat): the board's "chat i" */
+const CHAT = [[0, 'Тихоня', 'Говорит редко: больше молчит и смотрит', 1], [1, 'Обычный', 'Болтает сам с собой и рассказывает, что случилось', 2],
+  [2, 'Болтун', 'Почти не замолкает, особенно когда ты рядом', 3]];
+const BUBBLE = '<path d="M4 3h16a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-9l-5 4v-4H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" fill="currentColor"/>';
+radios($('chat'), CHAT.map(([v, name, note, n]) =>
+  [v, `<span class="talk">${[1, 2, 3].map(k => `<svg viewBox="0 0 24 20" class="${k <= n ? 'on' : ''}" aria-hidden="true">${BUBBLE}</svg>`).join('')}</span>${name}<small>${note}</small>`]),
+  'opt', v => set('chat ' + v));
+const powerNow = () => $('power').querySelector('button.on')?.dataset.v ?? 30;
+/* pip_feature 9 (PIP_F_WAKE), on by default: kept with the screen's settings, not in "Что Пип замечает" */
+$('f9').onchange = e => { powerNote(powerNow()); featsShow(); set('feat 9 ' + (e.target.checked ? 1 : 0)); };
+
+for (const [f, name, note] of FEATS) $('feats').insertAdjacentHTML('beforeend',
+  `<div class="toggle"><div><b>${name}</b><small>${note}</small></div><label class="switch"><input type="checkbox" id="f${f}" aria-label="${name}"><span></span></label></div>`);
+for (const [f, name, note] of BODY) $('noises').insertAdjacentHTML('beforeend',
+  `<div class="toggle"><div><b>${name}</b><small>${note}</small></div><label class="switch"><input type="checkbox" id="f${f}" aria-label="${name}"><span></span></label></div>`);
+$('noises').onchange = e => { if (e.target.id.startsWith('f')) featSet(e); };
+/* the last tile, next to "Падения": the owner's birthday (its own command, off after a flash; the date under the grid) */
+$('feats').insertAdjacentHTML('beforeend',
+  `<div class="toggle bdayTile"><div><b>Дни рождения</b><small id="bdayNote">праздник в твой день</small></div>
+    <label class="switch"><input type="checkbox" id="bdayOn" aria-label="Дни рождения"><span></span></label>
+    </div>`);
+/* what each switch really is on the board; under energy saving the mic ones show off and cannot be touched */
+const featOn = {0: true, 1: true, 2: true, 4: true, 6: true, 7: true, 8: true, 10: true, 11: true, 12: true, 13: true};
+/* locked switches, with why on hover: energy saving closes the mic (off), Требовательный sleeps only face down
+   (on: the board holds it on too, pip.c FEAT) */
+const tip = (el, text) => text ? el.dataset.tip = text : delete el.dataset.tip;
+function featsShow() {
+  const eco = $('eco').checked, demanding = $('care').querySelector('button.on')?.dataset.v === '2', wake = $('f9').checked;
+  for (const f of FEAT_IDS) {
+    const i = $('f' + f), byEco = eco && FEATS.some(x => x[0] === f && x[3]), byCare = demanding && f === 2, byWake = wake && f === 0;
+    i.checked = byEco ? false : byCare || byWake ? true : featOn[f];
+    i.disabled = byEco || byCare || byWake;
+    const t = i.closest('.toggle');
+    t.classList.toggle('off', byEco || byCare || byWake);
+    if (f === 0) t.querySelector('small').textContent = byWake ? 'включено, пока стоит «Просыпается от движения»' : FEATS[0][2];
+    tip(t, byEco ? 'Нельзя изменить, потому что включено энергосбережение'
+      : byCare ? 'Нельзя изменить, потому что установлен характер «Требовательный»'
+      : byWake ? 'Нельзя изменить, потому что включено пробуждение от движения' : '');
+  }
+}
+/* automatic brightness sets the level itself: the slider greys out and stays where it is */
+const abrightShow = on => {
+  $('bright').disabled = on;
+  $('brightField').classList.toggle('off', on);
+  tip($('brightField'), on ? 'Включена автояркость, ручная настройка недоступна' : '');
+};
+const brightShow = v => { $('brightOut').textContent = v + '%'; $('bright').style.setProperty('--p', (v - 10) / 90 * 100 + '%'); };
+$('bright').oninput = e => brightShow(e.target.value);
+$('bright').onchange = e => set('bright ' + e.target.value);
+$('eco').onchange = e => { featsShow(); set('eco ' + (e.target.checked ? 1 : 0)); };
+$('calls').onchange = e => set('calls ' + (e.target.checked ? 1 : 0));
+$('abright').onchange = e => { abrightShow(e.target.checked); set('abright ' + (e.target.checked ? 1 : 0)); };
+const featSet = e => { const f = +e.target.id.slice(1); featOn[f] = e.target.checked; set(`feat ${f} ${e.target.checked ? 1 : 0}`); };
+$('feats').onchange = e => { if (e.target.id.startsWith('f')) featSet(e); };
+/* how loud his voice and the menu's sounds are, 0 (off) .. 5: one command for both, as the Звуки app keeps them */
+const volShow = (id, v) => {
+  const o = $(id + 'Out');
+  o.textContent = +v ? v * 20 + '%' : 'выкл'; o.classList.toggle('off', !+v);
+  $(id).value = v; $(id).style.setProperty('--p', v / 5 * 100 + '%');
+};
+const soundSet = () => set(`sound ${$('sndPip').value} ${$('sndUi').value}`);
+for (const id of ['sndPip', 'sndUi']) { $(id).oninput = e => volShow(id, e.target.value); $(id).onchange = soundSet; }
+featsShow();
+
+/* the owner's birthday: off after a flash; on, a day and a month (words here, numbers on the board: "bday d m", 0 0 off) */
+const MONTH_NOM = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+const MONTH_GEN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+const MONTH_DAYS = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+for (let d = 1; d <= 31; d++) $('bdayD').add(new Option(d, d));
+MONTH_NOM.forEach((m, i) => $('bdayM').add(new Option(m, i + 1)));
+function bdayShow(d, m) {
+  const on = d > 0 && m > 0;
+  $('bdayOn').checked = on;
+  $('bdayWrap').classList.toggle('open', on);
+  $('bdayWrap').inert = !on; /* folded away: its selects take no focus */
+  if (!on) { $('bdayNote').textContent = 'праздник в твой день'; return; }
+  $('bdayM').value = m;
+  for (const o of $('bdayD').options) o.hidden = o.disabled = +o.value > MONTH_DAYS[m - 1]; /* no 31 June */
+  $('bdayD').value = Math.min(d, MONTH_DAYS[m - 1]);
+  $('bdayNote').textContent = `поздравит ${$('bdayD').value} ${MONTH_GEN[m - 1]}` + (+$('bdayD').value === 29 && m === 2 ? ' (или 28-го)' : '');
+}
+const bdaySend = () => {
+  const on = $('bdayOn').checked, m = +$('bdayM').value, d = Math.min(+$('bdayD').value, MONTH_DAYS[m - 1]);
+  bdayShow(on ? d : 0, on ? m : 0);
+  set(on ? `bday ${d} ${m}` : 'bday 0 0');
+};
+$('bdayOn').onchange = e => {
+  if (e.target.checked && !$('bdayPick').dataset.picked) { const t = new Date(); $('bdayD').value = t.getDate(); $('bdayM').value = t.getMonth() + 1; }
+  $('bdayPick').dataset.picked = 1;
+  bdaySend();
+};
+$('bdayD').onchange = $('bdayM').onchange = bdaySend;
+
+/* before the board answers: the defaults it ships with */
+/* the browser puts a slider and switches back where they were before a reload; the panel shows the board's values
+   (or these defaults) instead, so the fill, the thumb and the greyed-out states always agree */
+for (const i of document.querySelectorAll('input')) i.autocomplete = 'off';
+$('bright').value = 60; $('abright').checked = false; $('f9').checked = true; $('calls').checked = true; $('eco').checked = false; volShow('sndPip', 5); volShow('sndUi', 5);
+showEyes(0); mark($('care'), 1); mark($('chat'), 1); mark($('theme'), 0); mark($('privacy'), 1); mark($('power'), 30); powerNote(30); brightShow(60);
+abrightShow(false); featsShow(); bdayShow(0, 0);
+
+function showSettings(cfg) {
+  const pw = [15, 30, 60, 120, 300, 0].includes(cfg.power) ? cfg.power : 30;
+  $('f9').checked = cfg.feat[9] ?? true;
+  mark($('power'), pw); powerNote(pw);
+  $('bright').value = cfg.bright; brightShow(cfg.bright);
+  $('eco').checked = !!cfg.eco;
+  $('abright').checked = !!cfg.abright; abrightShow(!!cfg.abright);
+  mark($('theme'), cfg.theme); mark($('privacy'), cfg.privacy);
+  $('calls').checked = cfg.calls === undefined ? true : !!cfg.calls;
+  mark($('care'), cfg.care ?? 1);
+  mark($('chat'), cfg.chat ?? 1);
+  showEyes(cfg.eyes || 0);
+  const snd = Array.isArray(cfg.sound) ? cfg.sound : [5, 5];
+  volShow('sndPip', snd[0]); volShow('sndUi', snd[1]);
+  for (const f of FEAT_IDS) featOn[f] = !!(cfg.feat[f] ?? 1); /* not said (DEFAULT_CFG): on, as after a flash and as baseFrom has it */
+  featsShow();
+  const bd = Array.isArray(cfg.bday) ? cfg.bday : [0, 0];
+  if (bd[0]) $('bdayPick').dataset.picked = 1;
+  bdayShow(+bd[0] || 0, +bd[1] || 0);
+}
+function fill() {
+  baseFrom(cfg);
+  if (!staged.size) showSettings(cfg); /* changes waiting: they stay on screen, the board's values are only noted */
+  $('ver').textContent = cfg.ver || '—';
+  /* he died on the board (forgotten until he starved): an update keeps it so, only a clean flash brings a new Pip */
+  const dead = +cfg.dead || 0;
+  $('deadBar').hidden = !dead;
+  if (dead) $('deadText').innerHTML = `<b>Пип умер.</b> О нём слишком долго забывали, и он прожил ${days(dead)}. Обновление его не вернёт: завести нового Пипа можно только через «Прошить начисто»`;
+  $('needlink').textContent = 'Изменения уходят в брелок по кнопке «Применить изменения» внизу';
+  lockOutdated(fw && newer(fw.version, cfg.ver) ? cfg.ver || 'старая' : null);
+  send('menu'); /* the menu's layout answers as @M */
+}
+
+/* ---------- the update check: the board's version against the one this page carries ---------- */
+function newer(a, b) { /* is version a later than b ("1.2.0" against "1.1.0"); no version on the board = old */
+  if (!b) return true;
+  const x = String(a).split(/[^0-9]+/).filter(Boolean).map(Number), y = String(b).split(/[^0-9]+/).filter(Boolean).map(Number);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0);
+  return false;
+}
+function showTab(t) { document.querySelector(`#tabs [data-tab=${t}]`).click(); }
+/* old = the board's version when it must update first (null: all good). Settings and the developer tools lock,
+   only the firmware tab stays open, and a prompt pops up. */
+function lockOutdated(old) {
+  const on = !!old;
+  document.body.classList.toggle('outdated', on); lockInert();
+  $('outdatedBar').hidden = !on;
+  if (!on) { if ($('updDlg').open) $('updDlg').close(); return; }
+  $('heroTitle').textContent = 'Нужно обновить прошивку';
+  $('needlink').textContent = `На брелоке версия ${old}, доступна ${fw.version}. Обнови прошивку, чтобы открыть настройки`;
+  $('updOld').textContent = old; $('updNew').textContent = fw.version;
+  showTab('flash');
+  if (!$('updDlg').open && !flashing) $('updDlg').showModal();
+}
+const goUpdate = () => { if ($('updDlg').open) $('updDlg').close(); showTab('flash'); if (!$('flash').disabled) $('flash').click(); };
+$('updGo').onclick = goUpdate;
+$('outdatedGo').onclick = goUpdate;
+$('updLater').onclick = () => $('updDlg').close();
+
+/* ---------- tabs ---------- */
+$('tabs').onclick = e => {
+  const t = e.target.dataset.tab;
+  if (!t) return;
+  document.querySelectorAll('#tabs button').forEach(b => { b.classList.toggle('on', b.dataset.tab === t); b.setAttribute('aria-selected', b.dataset.tab === t); });
+  document.querySelectorAll('section[data-tab]').forEach(s => s.hidden = s.dataset.tab !== t);
+  if (t === 'dev') { drawBat(); if (!batLog || Date.now() - batAsked > 60000) batFetch(); } /* the log: fresh, at most once a minute */
+};
+$('openDebug').onclick = async () => { await panelOff(); await closePort(); if (bleDev) { const d = bleDev; bleDev = ble = null; cfg = null; try { d.gatt.disconnect(); } catch (e) {} } state('Отладка открыта в новой вкладке', false); window.open(served ? 'debug/' : 'debug/index.html', '_blank'); };
+$('devOn').onclick = () => setNow('dev 1');
+/* ---------- the battery log (main.c batlog_*: "bat" answers "@B seq uptime_s mV % flags lit% unix_s" rows, oldest
+   first, then "@B end"; "bat clear" erases it and answers with the empty log) ---------- */
+let batRows = null, batLog = null, batWant = null, batAsked = 0;
+function batFetch(want) {
+  if (!linked() || batRows) return;
+  batRows = [], batWant = want || null, batAsked = Date.now();
+  if (!batLog) drawBat();
+  send('bat').catch(() => { batRows = null; });
+}
+/* every row gets a time: its own (the clock was set), or from its run's (same boot: the uptime only grows) other rows,
+   or for a run that never knew the time, ended just before the next row that does (the last run: just now) */
+function batGot(lines) {
+  const rows = lines.map(s => { const [seq, up, mv, pct, fl, lit, t] = s.split(' ').map(Number);
+    return {seq, up, mv, pct, ch: fl & 1, usb: fl >> 1 & 1, eco: fl >> 2 & 1, lit, t: t > 1735689600 ? t : 0}; }).filter(r => r.mv > 0);
+  const runs = [];
+  rows.forEach((r, i) => { if (!i || r.up < rows[i - 1].up) runs.push([]); runs[runs.length - 1].push(r); });
+  let next = Date.now() / 1000 + 30;
+  for (let k = runs.length - 1; k >= 0; k--) {
+    const run = runs[k], known = run.find(r => r.t > 0), last = run[run.length - 1];
+    const at = known ? known.t - known.up : next - 60 - last.up; /* the run's power-on, in unix s */
+    run.forEach(r => { if (!r.t) r.t = at + r.up; });
+    next = run[0].t;
+  }
+  batLog = rows;
+  drawBat();
+  if (batWant === 'csv') batCsv();
+  batWant = null;
+}
+function batCsv() {
+  const csv = 'time,seq,uptime_s,mv,percent,charging,usb,eco,screen_lit_percent\n' + batLog.map(r =>
+    [new Date(r.t * 1000).toISOString(), r.seq, r.up, r.mv, r.pct, r.ch, r.usb, r.eco, r.lit].join(',')).join('\n') + '\n';
+  Object.assign(document.createElement('a'), {href: URL.createObjectURL(new Blob([csv], {type: 'text/csv'})), download: 'pip-battery.csv'}).click();
+  $('batState').textContent = `Строк: ${batLog.length}`; $('batState').classList.add('show');
+  setTimeout(() => $('batState').classList.remove('show'), 2500);
+}
+/* the example shown with no Pip linked or too little logged: a charge to full, then a day running down (always the same) */
+const BAT_DEMO = [38, 52, 66, 79, 90, 98, 100, 100, 97, 93, 88, 84, 80, 75, 71, 66, 62, 57, 51, 44, 37, 29, 21, 14];
+const BAT_MIN_BARS = 3;
+function batBars() {
+  /* buckets of 5 min .. 6 h, the smallest that puts the whole log in 48 bars; each shows the charge at its end */
+  const t0 = batLog[0].t, t1 = batLog[batLog.length - 1].t, tz = new Date().getTimezoneOffset() * 60;
+  const step = [5, 10, 15, 30, 60, 120, 180, 360].map(m => m * 60).find(s => (t1 - t0) / s < 48) || 21600;
+  const slot = t => Math.floor((t - tz) / step), first = slot(t0), bars = [];
+  for (const r of batLog) {
+    const i = slot(r.t) - first;
+    const b = bars[i] || (bars[i] = {from: (slot(r.t) * step) + tz, to: (slot(r.t) + 1) * step + tz, n: 0, ch: 0, usb: 0, lit: 0});
+    b.pct = r.pct, b.mv = r.mv, b.ch |= r.ch, b.usb |= r.usb, b.lit += r.lit, b.n++;
+  }
+  return {bars, step};
+}
+function drawBat() {
+  const box = $('batChart'), svg = $('batSvg'), W = box.clientWidth, H = box.clientHeight;
+  if (!W) return; /* its tab is hidden: drawn when it is opened */
+  const loading = !!batRows && !batLog, have = linked() && batLog && batLog.length, data = have ? batBars() : null;
+  const real = data && data.bars.filter(Boolean).length >= BAT_MIN_BARS;
+  let bars, step;
+  if (real) ({bars, step} = data);
+  else { /* the example: 30-min bars up to the last full half hour */
+    step = 1800;
+    const end = Math.floor(Date.now() / 1000 / step) * step;
+    bars = BAT_DEMO.map((pct, i) => ({pct, from: end - (BAT_DEMO.length - i) * step, to: end - (BAT_DEMO.length - i - 1) * step}));
+  }
+  box.classList.toggle('demo', !real);
+  const note = !real && (loading ? ['Загружаю лог…', ''] : !linked() ? ['', 'Подключи Пипа, чтобы посмотреть лог батареи']
+    : ['', 'Недостаточно данных для отображения лога']);
+  $('batNote').hidden = !note;
+  if (note) $('batNoteH').textContent = note[0], $('batNoteP').textContent = note[1];
+  const R = 40, B = 22, T = 6, pw = W - R, ph = H - B - T; /* the level's labels on the right, the time under it */
+  /* from the left edge across the width; under 12 bars they keep a twelfth each (not one fat block) */
+  const n = Math.max(bars.length, 12), slotW = pw / n, gap = Math.min(4, Math.max(2, slotW * .25)), bw = Math.max(2, slotW - gap);
+  const x0 = 0;
+  const y = p => T + ph * (1 - p / 100);
+  let s = '';
+  for (const p of [0, 50, 100]) s += `<line class="grid" x1="0" x2="${pw}" y1="${y(p) + .5}" y2="${y(p) + .5}"/><text class="ax" x="${W - 2}" y="${y(p) + 4}" text-anchor="end">${p}%</text>`;
+  /* time labels: every k-th bar so they never crowd, on the bar's start */
+  const fmt = t => new Date(t * 1000).toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'});
+  const k = Math.ceil(64 / slotW);
+  let lastDay = '';
+  for (let i = 0; i < bars.length; i++) {
+    const b = bars[i] || {from: bars[0].from + i * step};
+    if (i % k) continue;
+    const d = new Date(b.from * 1000), day = d.toLocaleDateString('ru-RU', {day: 'numeric', month: 'short'}).replace('.', '');
+    const lbl = lastDay && day !== lastDay ? day : fmt(b.from);
+    lastDay = day;
+    s += `<text class="ax" x="${x0 + i * slotW + gap / 2}" y="${H - 6}">${lbl}</text>`;
+  }
+  s += '<g class="bars">';
+  bars.forEach((b, i) => {
+    if (!b) return;
+    const x = x0 + i * slotW + gap / 2, top = y(Math.max(b.pct, 1.5)), h = y(0) - top, r = Math.min(4, bw / 2, h);
+    /* rounded at the top, square on the baseline */
+    const d = `M${x},${y(0)}V${top + r}Q${x},${top} ${x + r},${top}H${x + bw - r}Q${x + bw},${top} ${x + bw},${top + r}V${y(0)}Z`;
+    s += `<rect class="hit" data-i="${i}" x="${x - gap / 2}" y="${T}" width="${slotW}" height="${ph}"/><path class="bar${b.pct <= 20 ? ' low' : ''}" d="${d}"/>`;
+  });
+  svg.innerHTML = s + '</g>';
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  const tip = $('batTip');
+  tip.hidden = true;
+  if (!real) return;
+  svg.querySelectorAll('.hit').forEach(h => {
+    h.onpointerenter = () => {
+      const b = bars[+h.dataset.i], to = Math.min(b.to, batLog[batLog.length - 1].t);
+      tip.innerHTML = `<b>${b.pct}%</b> · ${(b.mv / 1000).toFixed(2)} В<br>${fmt(b.from)}–${fmt(to)}` +
+        (b.ch ? '<br>заряжался' : b.usb ? '<br>на кабеле, полный' : b.pct <= 20 ? '<br>низкий заряд' : '') + `<br>экран горел ${Math.round(b.lit / b.n)}% времени`;
+      tip.hidden = false;
+      const bx = +h.getAttribute('x') + slotW / 2, tw = tip.offsetWidth;
+      tip.style.left = Math.max(0, Math.min(pw - tw, bx - tw / 2)) + 'px';
+      tip.style.top = Math.max(0, y(b.pct) - tip.offsetHeight - 10) + 'px';
+    };
+    h.onpointerleave = () => { tip.hidden = true; };
+  });
+}
+new ResizeObserver(() => drawBat()).observe($('batChart'));
+$('batGet').onclick = () => { if (!linked()) { offline(); return; } batFetch('csv'); };
+$('batClear').onclick = () => {
+  if (!linked()) { offline(); return; }
+  if (!confirm('Удалить лог батареи на брелоке?\n\nОтменить это нельзя')) return;
+  batRows = [], batWant = null, send('bat clear').catch(() => { batRows = null; });
+};
+$('devOff').onclick = () => setNow('dev 0');
+
+/* ---------- the menu's layout (ui/shell.c shell_menu_set; debug.c "menu new / put / name / apply / reset") ---------- */
+/* the default one, as apps[] in ui/apps.c: [id, name] or [id, name, [apps…]] for a block */
+const MENU_DEFAULT = [['care', 'Пип'],
+  ['games', 'Игры', [['xo', 'Крестики-нолики'], ['pong', 'Пинг-понг'], ['snake', 'Змейка'], ['flight', 'Flappy Pip'], ['repeat', 'Повтори за мной'], ['ball', 'Шарик'], ['eight', 'Шар предсказаний'], ['coin', 'Монетка'], ['dice', 'Кубик'], ['maze', 'Лабиринт']]],
+  ['tools', 'Утилиты', [['clock', 'Часы'], ['timer', 'Таймер'], ['stopwatch', 'Секундомер'], ['noise', 'Шумомер'], ['torch', 'Фонарик']]],
+  ['phone', 'Телефон', [['notify', 'Уведомления'], ['music', 'Музыка'], ['camera', 'Камера'], ['locate', 'Локатор']]],
+  ['settings', 'Настройки', [['sound', 'Звуки'], ['style', 'Темы'], ['bright', 'Яркость'], ['eyes', 'Глаза'], ['privacy', 'Приватность'], ['bt', 'Bluetooth']]]];
+const NAME_MAX = 16; /* what fits a row of the keychain's menu in every theme */
+const NAME_BAD = /[^A-Za-zА-Яа-яЁё0-9 .,!?:;\-+()'&/#%*]/g; /* the glyphs every theme's menu font has */
+const GRIP = '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>';
+const UNDO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>';
+const menuOf = list => list.map(([id, def, kids]) => ({id, def, name: '', kids: kids && menuOf(kids)}));
+let menu = menuOf(MENU_DEFAULT), drag = null;
+const menuItems = () => menu.flatMap(it => [it, ...(it.kids || [])]);
+const el = (tag, cls) => Object.assign(document.createElement(tag), {className: cls});
+
+function menuRow(it, num, cls) {
+  const r = el('div', cls + (it.name ? ' renamed' : ''));
+  r.dataset.id = it.id;
+  r.innerHTML = `<button type="button" class="grip" title="Перетащи или двигай стрелками ↑ ↓" aria-label="Переместить «${it.def}»">${GRIP}</button>` +
+    (num ? `<span class="num">${num}</span>` : '') +
+    `<input maxlength="${NAME_MAX}" spellcheck="false" autocomplete="off" placeholder="${it.def}" aria-label="Название «${it.def}»">` +
+    (it.kids ? '<span class="tag">блок</span>' : '') +
+    `<button type="button" class="undo" title="Вернуть «${it.def}»" aria-label="Вернуть название «${it.def}»">${UNDO}</button>`;
+  r.querySelector('input').value = it.name || it.def;
+  return r;
+}
+/* the editor drawn from `menu`; numbers as on the keychain: an empty block is not listed there */
+function menuRender() {
+  const top = $('mTop');
+  top.innerHTML = '';
+  let n = 0;
+  const num = () => String(++n).padStart(2, '0');
+  for (const it of menu) {
+    if (!it.kids) { top.append(menuRow(it, num(), 'mi')); continue; }
+    const b = el('div', 'mb');
+    b.dataset.id = it.id;
+    b.append(menuRow(it, it.kids.length ? num() : '—', 'mh'));
+    const l = el('div', 'mlist');
+    for (const k of it.kids) l.append(menuRow(k, '', 'mi'));
+    b.append(l);
+    top.append(b);
+  }
+}
+/* what the board has: [[id, default name, name, [apps…]?]…] */
+function menuFromBoard(list) {
+  const conv = l => l.map(([id, def, name, kids]) => ({id, def, name: name || '', kids: kids && conv(kids)}));
+  const board = conv(list), dirty = sig() !== menuApplied;
+  menuApplied = sig(board), menuBoard = board;
+  /* edits not applied yet, or a row under the user's hands: theirs stays on screen, only the board's is noted */
+  if (!dirty && !drag && !($('menuEd').contains(document.activeElement) && document.activeElement.tagName === 'INPUT')) menu = board, menuRender();
+  menuChanged();
+}
+function menuFromDom() {
+  const by = Object.fromEntries(menuItems().map(it => [it.id, it]));
+  menu = [...$('mTop').children].map(c => {
+    const it = by[c.dataset.id];
+    if (it.kids) it.kids = [...c.querySelector('.mlist').children].map(k => by[k.dataset.id]);
+    return it;
+  });
+}
+/* edits stay on the panel until "Применить изменения" in the bottom bar, which counts them with the rest */
+/* "Отменить все изменения" under the editor: the standard menu again (order, blocks, names), staged as any edit;
+   dead while the editor already shows the standard one */
+function menuChanged() { $('menuReset').disabled = sig() === MENU_DEFAULT_SIG; applyBar(); }
+$('menuReset').onclick = () => { menu = menuOf(MENU_DEFAULT); menuRender(); menuChanged(); };
+/* to the board: the layout in lines short enough for its line buffers; the default one is just "menu reset" */
+async function menuSend() {
+  if (sig() === MENU_DEFAULT_SIG) { await send('menu reset'); return; }
+  const lines = ['menu new'];
+  const put = (to, ids) => {
+    let l = 'menu put ' + to;
+    for (const id of ids) { if (l.length + id.length > 110) { lines.push(l); l = 'menu put ' + to; } l += ' ' + id; }
+    lines.push(l);
+  };
+  put('top', menu.map(it => it.id));
+  for (const it of menu) if (it.kids && it.kids.length) put(it.id, it.kids.map(k => k.id));
+  for (const it of menuItems()) if (it.name) lines.push(`menu name ${it.id} ${it.name}`);
+  lines.push('menu apply');
+  for (const l of lines) { await send(l); await new Promise(r => setTimeout(r, ble ? 70 : 15)); } /* the board's queue is short */
+}
+const sig = (m = menu) => JSON.stringify(m.map(it => [it.id, it.name, it.kids && it.kids.map(k => [k.id, k.name])]));
+const MENU_DEFAULT_SIG = sig(menuOf(MENU_DEFAULT));
+let menuApplied = MENU_DEFAULT_SIG; /* what the board has, as far as the panel knows */
+let menuBoard = menuOf(MENU_DEFAULT);  /* and the layout itself, for "Отменить" */
+baseFrom(DEFAULT_CFG); /* what a board fresh from a flash has, until one answers (here: the menu is set up by now) */
+
+/* names: typed in place; only glyphs the keychain can draw */
+/* the editor folds away: only its title shows until opened (it is long) */
+/* open or fold a block by its height, smoothly (hidden once folded, so it takes no room or focus) */
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+function slide(el, open) {
+  el.getAnimations().forEach(a => a.cancel());
+  if (reducedMotion.matches) { el.hidden = !open; return; }
+  if (open) el.hidden = false;
+  const h = el.scrollHeight;
+  const a = el.animate(open ? [{height: '0px', opacity: 0}, {height: h + 'px', opacity: 1}] : [{height: h + 'px', opacity: 1}, {height: '0px', opacity: 0}],
+                       {duration: 320, easing: 'cubic-bezier(.2,.8,.2,1)'});
+  /* folded: hidden at the end, by the clock too (a background tab may never finish the animation) */
+  if (!open) { const t = el.slideT = setTimeout(() => { if (el.slideT === t) el.hidden = true; }, 330); }
+  else el.slideT = 0;
+}
+/* every folded card: its title opens and folds what it controls (the menu editor, the fonts, the libraries) */
+document.querySelectorAll('.card-h.fold').forEach(b => b.onclick = () => {
+  const body = $(b.getAttribute('aria-controls')), open = body.hidden;
+  slide(body, open);
+  b.setAttribute('aria-expanded', open);
+});
+$('menuEd').addEventListener('input', e => {
+  const i = e.target;
+  if (i.tagName !== 'INPUT') return;
+  const v = i.value.replace(NAME_BAD, '');
+  if (v !== i.value) { const at = Math.max(0, i.selectionStart - (i.value.length - v.length)); i.value = v; i.setSelectionRange(at, at); }
+});
+$('menuEd').addEventListener('change', e => {
+  const i = e.target;
+  if (i.tagName !== 'INPUT') return;
+  const it = menuItems().find(x => x.id === i.closest('[data-id]').dataset.id);
+  const v = i.value.replace(NAME_BAD, '').replace(/\s+/g, ' ').trim().slice(0, NAME_MAX);
+  const name = v && v !== it.def ? v : '';
+  if (name === it.name) { i.value = it.name || it.def; return; }
+  it.name = name;
+  menuRender();
+  menuChanged();
+});
+$('menuEd').addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') {
+    if (e.key === 'Enter') e.target.blur();
+    if (e.key === 'Escape') { const it = menuItems().find(x => x.id === e.target.closest('[data-id]').dataset.id); e.target.value = it.name || it.def; e.target.blur(); }
+    return;
+  }
+  const g = e.target.closest('.grip');
+  if (g && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); menuStep(g.closest('[data-id]').dataset.id, e.key === 'ArrowUp' ? -1 : 1); }
+});
+$('menuEd').addEventListener('click', e => {
+  const u = e.target.closest('.undo');
+  if (!u) return;
+  menuItems().find(x => x.id === u.closest('[data-id]').dataset.id).name = '';
+  menuRender();
+  menuChanged();
+});
+/* the arrow keys: a row one step up or down; an app walks into a block next to it and out at its ends */
+function menuStep(id, d) {
+  const top = menu.findIndex(it => it.id === id);
+  if (top >= 0) {
+    const it = menu[top], next = menu[top + d];
+    if (!next) return;
+    menu.splice(top, 1);
+    if (!it.kids && next.kids) d < 0 ? next.kids.push(it) : next.kids.unshift(it); /* into the block */
+    else menu.splice(top + d, 0, it);
+  } else {
+    const b = menu.findIndex(x => x.kids && x.kids.some(k => k.id === id)), kids = menu[b].kids, at = kids.findIndex(k => k.id === id);
+    const [it] = kids.splice(at, 1);
+    if (at + d < 0) menu.splice(b, 0, it);                 /* out above the block */
+    else if (at + d > kids.length) menu.splice(b + 1, 0, it); /* out below it */
+    else kids.splice(at + d, 0, it);
+  }
+  menuRender();
+  $('mTop').querySelector(`[data-id="${id}"] .grip`).focus();
+  menuChanged();
+}
+
+/* dragging by the grip, with a mouse or a finger: the row follows, a placeholder shows where it lands.
+   A block moves on the top list only; an app also goes into a block's list or out of it. */
+$('menuEd').addEventListener('pointerdown', e => {
+  const g = e.target.closest('.grip');
+  if (!g || e.button) return;
+  e.preventDefault();
+  const head = g.parentElement;
+  const item = head.classList.contains('mh') ? head.parentElement : head;
+  const r = item.getBoundingClientRect();
+  const ph = el('div', 'ph');
+  ph.style.height = r.height + 'px';
+  item.before(ph);
+  Object.assign(item.style, {width: r.width + 'px', left: r.left + 'px', top: r.top + 'px'});
+  item.classList.add('dragging');
+  drag = {item, ph, dy: e.clientY - r.top, x: e.clientX, y: e.clientY, block: item.classList.contains('mb'), was: sig()};
+  g.setPointerCapture(e.pointerId);
+  document.body.classList.add('menu-drag');
+  requestAnimationFrame(dragScroll);
+});
+function dragPlace() {
+  const {item, ph, dy} = drag;
+  item.style.top = drag.y - dy + 'px';
+  let list = $('mTop');
+  if (!drag.block)
+    for (const l of $('mTop').querySelectorAll('.mb > .mlist')) {
+      const r = l.getBoundingClientRect();
+      if (drag.y >= r.top - 6 && drag.y <= r.bottom + 2 && drag.x >= r.left - 40 && drag.x <= r.right) { list = l; break; }
+    }
+  let before = null;
+  for (const c of list.children) {
+    if (c === ph || c === item) continue;
+    const r = c.getBoundingClientRect();
+    if (drag.y < r.top + r.height / 2) { before = c; break; }
+  }
+  if (ph.parentNode !== list || ph.nextElementSibling !== before) list.insertBefore(ph, before);
+}
+function dragScroll() { /* near the window's edges the page scrolls under the row */
+  if (!drag) return;
+  const m = 70, v = drag.y < m ? -(m - drag.y) / 3 : drag.y > innerHeight - m ? (drag.y - innerHeight + m) / 3 : 0;
+  if (v) { scrollBy(0, v); dragPlace(); }
+  requestAnimationFrame(dragScroll);
+}
+window.addEventListener('pointermove', e => { if (drag) { drag.x = e.clientX; drag.y = e.clientY; dragPlace(); } });
+const dragEnd = () => {
+  if (!drag) return;
+  const {item, ph, was} = drag;
+  drag = null;
+  item.classList.remove('dragging');
+  item.removeAttribute('style');
+  ph.replaceWith(item);
+  document.body.classList.remove('menu-drag');
+  menuFromDom();
+  menuRender();
+  if (sig() !== was) menuChanged();
+};
+window.addEventListener('pointerup', dragEnd);
+window.addEventListener('pointercancel', dragEnd);
+menuRender();
+menuChanged();
+
+/* ---------- advanced: the simulator and the emotions list, each in a tab of its own ---------- */
+const served = location.protocol === 'http:' || location.protocol === 'https:';
+$('openSim').onclick = () => window.open(served ? 'sim/index.html' : 'http://localhost:8466/', '_blank', 'noopener');
+/* the emotions list (docs/list): a page of its own beside the panel, from the site or as a plain file */
+$('openList').onclick = () => window.open(served ? 'list/' : 'list/index.html', '_blank', 'noopener');
+
+/* ---------- documentation: the contents list marks the section being read ---------- */
+{
+  const links = [...document.querySelectorAll('#toc a')];
+  const spy = new IntersectionObserver(es => {
+    for (const e of es) if (e.isIntersecting) links.forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + e.target.id));
+  }, {rootMargin: '-20% 0px -70% 0px'});
+  document.querySelectorAll('.dsec[id]').forEach(s => spy.observe(s));
+  $('toc').onclick = e => {
+    const a = e.target.closest('a');
+    if (!a) return;
+    e.preventDefault();
+    document.querySelector(a.getAttribute('href')).scrollIntoView({behavior: 'smooth', block: 'start'});
+    a.scrollIntoView({block: 'nearest', inline: 'center'});
+  };
+}
+
+/* ---------- flashing (esptool-js) ---------- */
+/* "clean" also writes erased flash (0xFF) over where the board keeps its data: NVS (the pet, settings, phone and
+   computer bonds) and the start of "storage" (the mood history and the battery log). img.wipe comes from
+   tools/pack_firmware.py (partitions.csv); older firmware.js files lack it, hence the same regions written out here. */
+const WIPE = [[0x9000, 0x6000], [0x820000, 0x20000]];
+let flashing = false; /* the flasher talks to the board itself: no update prompt over it */
+$('flash').onclick = () => {
+  /* the board is linked and already runs this version: there is nothing to update to */
+  if (cfg && cfg.ver && fw && !newer(fw.version, cfg.ver)) {
+    toast(`Уже установлена последняя версия ${cfg.ver}: обновлять нечего`, true);
+    return;
+  }
+  flashBoard(false);
+};
+$('flashClean').onclick = () => {
+  if (confirm('Прошить начисто?\n\nСотрётся всё: питомец начнёт с первого дня, настройки и цвет глаз сбросятся, телефон придётся подключать заново, история и лог батареи удалятся.\n\nОтменить это нельзя')) flashBoard(true);
+};
+/* After the reset the chip comes back on USB (maybe as a new port object): open it again, and its first @C gets the
+   clock (sendTime), so the date is right with no iPhone around. False when it did not answer within ~15 s. */
+async function reconnectAfterFlash(old) {
+  for (let t = 0; t < 15; t++) {
+    await new Promise(r => setTimeout(r, 1000));
+    if ((port || ble) && cfg) return true; /* linked by hand meanwhile: that link got the clock */
+    const ports = (await navigator.serial.getPorts()).filter(x => x.getInfo().usbVendorId === 0x303a);
+    for (const p of [old, ...ports.filter(x => x !== old)]) {
+      try { await openPort(p, 'Перезапуск…'); } catch (e) { port = null; continue; }
+      for (let k = 0; !cfg && port && k < 100; k++) await new Promise(r => setTimeout(r, 100)); /* it boots in ~4 s; a reopen resets it again */
+      if (cfg) return true;
+      await closePort();
+    }
+  }
+  return false;
+}
+/* firmware.js once: over http(s) a fetch read as it comes (the bar shows how much, against version.js's size: GitHub
+   Pages sends it gzipped, so Content-Length is not it), then run as a script; from a plain file (file://, no fetch) a
+   script tag, with no progress. A fetch that fails falls back to the tag too. */
+let fwLoading = null;
+function loadFirmware(onProgress) {
+  if (window.PIP_FIRMWARE && window.PIP_FIRMWARE.parts) return Promise.resolve(window.PIP_FIRMWARE);
+  if (fwLoading) return fwLoading;
+  const url = 'firmware/firmware.js?v=' + encodeURIComponent(fw ? fw.version + '-' + fw.built : '');
+  const tag = () => new Promise((ok, no) => {
+    const sc = document.createElement('script');
+    sc.src = url;
+    sc.onload = () => window.PIP_FIRMWARE ? ok(window.PIP_FIRMWARE) : no(new Error('файл прошивки пуст'));
+    sc.onerror = () => { sc.remove(); no(new Error('не удалось скачать прошивку, проверь интернет')); };
+    document.head.appendChild(sc);
+  });
+  const fetched = async () => {
+    const r = await fetch(url, {cache: 'no-cache'});
+    if (!r.ok || !r.body) throw new Error('HTTP ' + r.status);
+    const total = (fw && fw.bytes) || +r.headers.get('Content-Length') || 0, rd = r.body.getReader(), chunks = [];
+    let got = 0;
+    for (;;) {
+      const {done, value} = await rd.read();
+      if (done) break;
+      chunks.push(value); got += value.length;
+      if (total) onProgress(Math.min(1, got / total));
+    }
+    const sc = document.createElement('script');
+    sc.textContent = new TextDecoder().decode(await new Blob(chunks).arrayBuffer());
+    document.head.appendChild(sc);
+    if (!window.PIP_FIRMWARE) throw new Error('файл прошивки повреждён');
+    return window.PIP_FIRMWARE;
+  };
+  fwLoading = (location.protocol === 'file:' ? tag() : fetched().catch(() => tag())).finally(() => { fwLoading = null; });
+  return fwLoading;
+}
+/* what went wrong with the flashing, in plain words (esptool-js and the browser say it in English) */
+function flashFail(e) {
+  const m = String(e && e.message || e || '');
+  if (e && e.name === 'NotFoundError') return 'Брелок не выбран в списке. Нажми кнопку ещё раз и выбери его';
+  if (/скачать|fetch|HTTP|повреждён|пуст/i.test(m)) return 'Не удалось скачать прошивку: проверь интернет и попробуй ещё раз. Брелок не тронут';
+  if (/sync|connect|timed? ?out|wrong boot mode|download mode/i.test(m))
+    return 'Брелок не перешёл в режим прошивки. Зажми нижнюю кнопку, коротко нажми верхнюю, отпусти нижнюю и нажми кнопку прошивки ещё раз';
+  if (e && (e.name === 'NetworkError' || e.name === 'InvalidStateError') || /open|busy|access/i.test(m)) return BUSY.replace('«По кабелю»', 'кнопку прошивки');
+  if (/lost|disconnect|closed|break/i.test(m))
+    return 'Связь с брелоком оборвалась во время прошивки. Проверь кабель и нажми кнопку прошивки ещё раз: брелок запустится, как только прошивка дойдёт до конца';
+  return `Не получилось прошить (${m}). Отключи и снова вставь кабель и попробуй ещё раз; если не помогает — смотри «Не получается?» ниже`;
+}
+async function flashBoard(clean) {
+  if (!fw) return;
+  const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+  $('flash').disabled = $('flashClean').disabled = true;
+  flashing = true;
+  $('flashProg').hidden = false; /* the bar and its line show up once flashing starts */
+  $('prog').style.width = '0';
+  let transport = null;
+  try {
+    /* the port first, while the click still counts as one (requestPort needs it; a long download would use it up) */
+    if (!port) await openPort(await navigator.serial.requestPort({filters: [{usbVendorId: 0x303a}]}), 'Прошивка…');
+    const MB = n => (n / 1048576).toFixed(1).replace('.', ',');
+    const dl = f => 'Скачиваю прошивку… ' + (fw.bytes ? `${MB(f * fw.bytes)} из ${MB(fw.bytes)} МБ` : Math.round(f * 100) + '%');
+    $('flashState').textContent = window.PIP_FIRMWARE && window.PIP_FIRMWARE.parts ? 'Готовлюсь…'
+      : location.protocol === 'file:' ? 'Загружаю прошивку…' : dl(0);
+    const [img, {ESPLoader, Transport}] = await Promise.all([
+      loadFirmware(f => {
+        $('prog').style.width = f * 100 + '%';
+        $('flashState').textContent = dl(f);
+      }).catch(e => { throw new Error(e.message || 'не удалось скачать прошивку'); }),
+      import('https://unpkg.com/esptool-js@0.6.1/bundle.js'),
+    ]);
+    $('prog').style.width = '0';
+    /* ask Pip to show "Обновление" first: the screen keeps that frame while the chip is in the flasher.
+       Firmware that is not Pip's (a factory one, an empty chip) never answers: then just go on after a few seconds. */
+    $('flashState').textContent = 'Связываюсь с Пипом…';
+    for (let t = 0; !cfg && t < 60; t++) await new Promise(r => setTimeout(r, 100));
+    if (cfg) { await send('update'); await new Promise(r => setTimeout(r, 600)); }
+    const p = await closePort();
+    transport = new Transport(p, true);
+    const loader = new ESPLoader({transport, baudrate: 921600, terminal: {clean() {}, writeLine() {}, write() {}}});
+    $('flashState').textContent = 'Перевожу брелок в режим прошивки…';
+    await loader.main();
+    const files = img.parts.map(x => ({data: b64(x.data), address: x.address}));
+    if (clean) for (const [address, size] of img.wipe || WIPE) files.push({data: new Uint8Array(size).fill(0xff), address});
+    const total = files.reduce((n, x) => n + x.data.length, 0);
+    let done = 0, last = 0;
+    await loader.writeFlash({
+      fileArray: files,
+      flashMode: 'keep', flashFreq: 'keep', flashSize: 'keep', eraseAll: false, compress: true,
+      reportProgress: (i, written, size) => {
+        if (written < last) done += last;
+        last = written;
+        $('prog').style.width = Math.min(100, (done + written) / total * 100) + '%';
+        $('flashState').textContent = (clean ? 'Прошиваю начисто' : 'Обновляю') + '… Не отключай кабель';
+      },
+    });
+    /* esptool-js 0.6.1 'hard_reset' only lets RTS go, it never pulls it: the chip stayed in the flasher with the last
+       frame on screen. Pull EN low with RTS (DTR low keeps GPIO0 high: a normal boot), then let go. */
+    await transport.setDTR(false);
+    await transport.setRTS(true);
+    await new Promise(r => setTimeout(r, 150));
+    await transport.setRTS(false);
+    await transport.disconnect();
+    transport = null;
+    $('prog').style.width = '100%';
+    state('Перезапуск…', false);
+    cfg = null; /* the old firmware's answer */
+    /* done: said at once; the link back (for the clock) goes on quietly behind it */
+    const doneText = clean ? 'Готово! Пип прошит начисто — это новый питомец' : 'Готово! Пип обновлён, данные на месте';
+    $('flashState').textContent = doneText + '. Пип перезапускается — сейчас подключусь к нему сам';
+    toast(clean ? 'Пип прошит начисто. Всё прошло успешно' : 'Прошивка обновлена. Всё прошло успешно');
+    const back = await reconnectAfterFlash(p);
+    if (!back) state('Не подключён', false);
+    $('flashState').textContent = doneText + (back ? '. Время и дата переданы с компьютера' : '. Через несколько секунд подключи его снова');
+  } catch (e) {
+    /* let the port go, or "ещё раз" finds it still open inside the flasher */
+    if (transport) try { await transport.disconnect(); } catch (e2) {}
+    $('flashState').textContent = flashFail(e);
+  }
+  $('flash').disabled = $('flashClean').disabled = !hasSerial;
+  flashing = false;
+}
+</script>
+</body>
+</html>

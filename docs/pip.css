@@ -1,0 +1,72 @@
+/* The project's look for the pages beside the panel (the emotions list, the debug page): the keychain's world as the
+   panel has it - AMOLED black, the Стандартная orange, Manrope and JetBrains Mono, rounded cards. The panel itself
+   keeps its own copy inline (it works as a plain file); these pages link this one. */
+:root{
+  --bg:#060607; --bg2:#0d0d10; --card:#131317; --card2:#1a1a1f; --line:#25252c; --line2:#34343d;
+  --text:#f3f1ec; --dim:#9a978f; --faint:#6b6962;
+  --acc:#ff6a2b; --acc2:#ff9a3d; --accbg:rgba(255,106,43,.12); --good:#30d158; --bad:#ff453a; --warn:#ffd60a; --blue:#5aa9ff;
+  --r:20px; --r2:14px;
+  --sans:"Manrope",-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"SF Mono",Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font:15px/1.5 var(--sans);-webkit-font-smoothing:antialiased;min-height:100vh;
+  background-image:radial-gradient(900px 500px at 85% -10%,rgba(255,106,43,.10),transparent 60%),radial-gradient(700px 500px at -10% 10%,rgba(120,90,255,.06),transparent 60%)}
+body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background-image:radial-gradient(rgba(255,255,255,.085) 1px,transparent 1.3px);background-size:22px 22px;
+  -webkit-mask-image:radial-gradient(75% 70% at 50% 45%,transparent 25%,#000 100%);mask-image:radial-gradient(75% 70% at 50% 45%,transparent 25%,#000 100%)}
+a{color:var(--acc2)}
+code{font:500 13px var(--mono);background:var(--card2);padding:2px 6px;border-radius:6px}
+.wrap{max-width:1180px;margin:0 auto;padding:0 24px 72px}
+:focus-visible{outline:2px solid var(--acc2);outline-offset:2px}
+
+/* ---- header: the brand, the pages, and what the page needs ---- */
+.top{display:flex;align-items:center;gap:14px;padding:20px 0;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:12px;text-decoration:none;color:inherit}
+.logo{width:40px;height:40px;border-radius:12px;background:#000;border:1px solid var(--line2);display:flex;align-items:center;justify-content:center;gap:5px;flex:none}
+.logo i{width:8px;height:13px;border-radius:4px;background:#fff;animation:blink 6s infinite}
+@keyframes blink{0%,93%,100%{transform:scaleY(1)}96%{transform:scaleY(.08)}}
+.brand b{font:800 20px/1 var(--sans);letter-spacing:-.3px;display:block}
+.brand small{font-size:12px;color:var(--dim);font-weight:500}
+.nav{display:inline-flex;gap:4px;padding:4px;background:var(--card);border:1px solid var(--line);border-radius:14px;margin-right:auto}
+.nav a{height:34px;display:inline-flex;align-items:center;padding:0 14px;border-radius:10px;color:var(--dim);text-decoration:none;font-weight:700;font-size:14px;white-space:nowrap}
+.nav a:hover{color:var(--text)}
+.nav a.on{background:var(--card2);color:var(--text);box-shadow:0 1px 0 rgba(255,255,255,.06) inset,0 4px 12px -6px #000}
+.pill{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:999px;background:var(--card);border:1px solid var(--line);font-weight:600;font-size:13px;white-space:nowrap}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--bad);flex:none}
+.dot.on{background:var(--good);box-shadow:0 0 0 4px rgba(48,209,88,.18)}
+
+/* ---- buttons, inputs ---- */
+button,.btn{font:700 14px var(--sans);border-radius:12px;padding:0 16px;height:40px;border:1px solid var(--line2);background:var(--card2);color:var(--text);cursor:pointer;
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;transition:background .15s,border-color .15s,transform .1s,filter .15s}
+button:hover,.btn:hover{border-color:var(--faint)}
+button:active{transform:scale(.98)}
+button.main{background:linear-gradient(180deg,var(--acc2),var(--acc));border-color:transparent;color:#140800;box-shadow:0 6px 20px -8px rgba(255,106,43,.7)}
+button.main:hover{filter:brightness(1.07)}
+button.ghost{background:transparent}
+button.on{background:var(--accbg);border-color:var(--acc);color:var(--acc2)}
+button:disabled{opacity:.5;cursor:not-allowed;transform:none}
+button.small{height:32px;padding:0 11px;font-size:13px;border-radius:10px}
+input[type=search],input[type=number],select{font:500 14px var(--sans);color:var(--text);background:var(--card2);border:1px solid var(--line2);border-radius:12px;height:40px;padding:0 12px}
+input[type=search]::placeholder{color:var(--faint)}
+input[type=range]{width:100%;accent-color:var(--acc)}
+select{cursor:pointer}
+
+/* ---- cards ---- */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:20px 22px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.card-h{display:flex;align-items:center;gap:12px}
+.ic{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;background:var(--accbg);color:var(--acc2);flex:none}
+.ic svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.card h2{font:700 16px/1.25 var(--sans);margin:0}
+.card-h p{margin:2px 0 0;font-size:13px;color:var(--dim)}
+.muted{color:var(--dim);font-size:13px;margin:0}
+.notice{display:flex;gap:12px;align-items:flex-start;border:1px solid rgba(255,106,43,.35);background:var(--accbg);color:#ffd2bd;border-radius:var(--r2);padding:14px 16px}
+.chip{display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:999px;background:var(--card2);border:1px solid var(--line2);font:600 12px var(--sans);color:var(--dim);white-space:nowrap}
+.mono{font-family:var(--mono)}
+#tip{position:fixed;pointer-events:none;background:#000;border:1px solid var(--line2);padding:8px 10px;border-radius:10px;font-size:12.5px;line-height:1.45;display:none;z-index:50;max-width:320px;box-shadow:0 10px 30px -10px #000}
+
+.nav{scrollbar-width:none}.nav::-webkit-scrollbar{display:none}
+@media (max-width:720px){.wrap{padding:0 14px 56px}.nav{order:3;width:100%;overflow-x:auto}.nav a{padding:0 11px;flex:1;justify-content:center}}

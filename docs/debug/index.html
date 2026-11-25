@@ -1,0 +1,594 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Пип — отладка</title>
+<link rel="icon" href="../favicon.svg?v=curious" type="image/svg+xml">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png?v=curious">
+<meta name="theme-color" content="#060607">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../pip.css">
+<script src="../list/names.js"></script>
+<style>
+/* The developer page in the panel's look: what Pip feels and why, his last day, and every lever - in plain Russian.
+   It talks to the board over the cable (Web Serial), Bluetooth (Web Bluetooth) or tools/pipdebug.py's bridge. */
+.hero{display:grid;grid-template-columns:auto minmax(0,1fr);gap:28px;align-items:center;background:linear-gradient(180deg,var(--card),var(--bg2));border:1px solid var(--line);border-radius:28px;padding:24px 28px;margin-bottom:18px}
+.face{width:150px;height:150px;border-radius:50%;background:#000;display:grid;place-items:center;overflow:hidden;box-shadow:0 0 0 6px #1b1b20,0 0 0 7px var(--line2)}
+.face img{width:100%;height:100%;display:block}
+.face .off{display:flex;gap:16px}.face .off i{width:30px;height:8px;border-radius:4px;background:#fff;opacity:.45}
+.hero .lbl{font-size:12px;color:var(--dim);font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.hero h1{font:800 32px/1.1 var(--sans);letter-spacing:-.6px;margin:2px 0 4px}
+.hero .sub{color:var(--dim);margin:0 0 14px}
+.hero .sub b{color:var(--acc2);font-weight:700}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.stat{background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:var(--r2);padding:9px 12px;min-width:0}
+.stat span{display:block;font-size:11.5px;color:var(--dim);font-weight:600}
+.stat b{display:block;font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:16px;align-items:start}
+.col{display:flex;flex-direction:column;gap:16px;min-width:0}
+@media (max-width:1000px){.grid{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.hero{grid-template-columns:1fr;justify-items:start}}
+.offline .need-link{opacity:.45;pointer-events:none}
+/* the decision tree: each step a row; the one taken lit, the ones passed dimmed, the ones after faint */
+.steps{display:flex;flex-direction:column;gap:8px}
+.step{border:1px solid var(--line);border-radius:var(--r2);padding:11px 14px;opacity:.5;transition:opacity .2s,border-color .2s,background .2s}
+.step.pass{opacity:.8}
+.step.hit{opacity:1;border-color:var(--acc);background:var(--accbg)}
+.step .q{display:flex;justify-content:space-between;gap:12px;font-weight:700}
+.step .q em{font-style:normal;color:var(--acc2);white-space:nowrap}
+.step .d{font-size:13px;color:var(--dim);margin-top:3px}
+.n{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:7px;background:var(--card2);border:1px solid var(--line2);font:700 12px var(--mono);margin-right:8px;color:var(--dim)}
+.urge{display:grid;grid-template-columns:90px minmax(0,1fr) 120px;gap:10px;align-items:center;font-size:13px;margin:5px 0}
+.urge.win{color:var(--acc2);font-weight:700}
+.meter{position:relative;height:10px;background:var(--card2);border-radius:5px;overflow:hidden}
+.meter i{position:absolute;left:0;top:0;bottom:0;border-radius:5px}
+.meter u{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--bad)}
+.gauge{position:relative;height:14px;background:linear-gradient(90deg,#3a3a40 0%,#5a5a62 45%,#3f8f60 70%,var(--good) 100%);border-radius:7px;margin:12px 0 22px}
+.gauge u{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--text)}
+.gauge u span{position:absolute;top:19px;left:50%;transform:translateX(-50%);font-size:11px;color:var(--dim);white-space:nowrap}
+.gauge b{position:absolute;top:-5px;width:8px;height:24px;margin-left:-4px;background:var(--acc);border-radius:4px;box-shadow:0 0 0 3px rgba(255,106,43,.25)}
+.pools{font-size:12.5px;color:var(--dim);display:grid;gap:2px}
+.pools .on{color:var(--acc2);font-weight:700}
+canvas{width:100%;height:230px;display:block;background:var(--bg2);border:1px solid var(--line);border-radius:12px}
+.strip{height:14px;border-radius:5px;overflow:hidden;display:flex}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px;color:var(--dim)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.seg{display:inline-flex;gap:4px;padding:4px;background:var(--bg2);border:1px solid var(--line);border-radius:12px;flex-wrap:wrap}
+.seg button{height:32px;border:0;background:transparent;color:var(--dim);border-radius:9px;padding:0 12px;font-size:13px}
+.seg button.on{background:var(--card2);color:var(--text);box-shadow:0 1px 0 rgba(255,255,255,.06) inset}
+.moods{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:6px;max-height:330px;overflow:auto;padding-right:4px}
+.moods button{height:auto;min-height:36px;padding:6px 10px;justify-content:flex-start;text-align:left;font-weight:600;font-size:13px;border-radius:10px}
+.moods button.on{background:var(--acc);border-color:var(--acc);color:#140800}
+.moods button.sel{border-color:var(--acc);color:var(--acc2);background:var(--accbg)}
+.acts{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px}
+.acts button{font-size:13px;height:38px}
+.feats{display:flex;flex-wrap:wrap;gap:6px}
+.feats button{font-size:13px;height:34px;border-radius:999px}
+.sl{display:grid;grid-template-columns:minmax(0,1fr) 150px 52px;gap:10px;align-items:center;font-size:13px;margin:4px 0}
+.sl output{font:600 12.5px var(--mono);color:var(--dim);text-align:right}
+details.grp{border-top:1px solid var(--line);padding:8px 0}
+details.grp:first-of-type{border-top:0}
+details.grp summary{cursor:pointer;font-weight:700;list-style:none;display:flex;justify-content:space-between;align-items:center}
+details.grp summary::-webkit-details-marker{display:none}
+details.grp summary:after{content:"›";color:var(--dim);transform:rotate(90deg);transition:transform .2s}
+details.grp[open] summary:after{transform:rotate(-90deg)}
+.hint{font-size:12.5px;color:var(--faint);margin:0}
+.kbd{font:600 11.5px var(--mono);padding:1px 6px;border-radius:6px;border:1px solid var(--line2);color:var(--dim)}
+</style>
+</head>
+<body class="offline">
+<div class="wrap">
+<header class="top">
+  <a class="brand" href="../"><span class="logo"><i></i><i></i></span><span><b>Пип</b><small>отладка</small></span></a>
+  <nav class="nav"><a href="../">Панель</a><a href="../sim/">Симулятор</a><a href="../list/">Эмоции</a><a href="./" class="on">Отладка</a></nav>
+  <span class="pill"><span class="dot" id="conn"></span><span id="via">Не подключён</span></span>
+  <button class="main" id="usb">По кабелю</button>
+  <button id="bt">По Bluetooth</button>
+</header>
+
+<div class="notice" id="howto" style="margin-bottom:16px">
+  <div>Подключи брелок кабелем или по Bluetooth — нужен Chrome или Edge на компьютере. Пока открыта отладка, панель не может
+    подключиться к этому же брелоку: закрой панель или отключи её. Всё, что меняется здесь, живёт до перезагрузки брелока.</div>
+</div>
+
+<section class="hero">
+  <div class="face" id="face"><div class="off"><i></i><i></i></div></div>
+  <div>
+    <div class="lbl">Сейчас на экране</div>
+    <h1 id="mood">—</h1>
+    <p class="sub" id="moodSub">Пип не подключён</p>
+    <div class="stats">
+      <div class="stat"><span>Кто выбирает эмоцию</span><b id="mode">—</b></div>
+      <div class="stat"><span>Экран</span><b id="scr">—</b></div>
+      <div class="stat"><span>Время на брелоке</span><b id="hour">—</b></div>
+      <div class="stat"><span>Батарея</span><b id="bat">—</b></div>
+      <div class="stat"><span>Микрофон слышит</span><b id="db">—</b></div>
+      <div class="stat"><span>Шагов сегодня</span><b id="steps">—</b></div>
+      <div class="stat"><span>Кадр глаз</span><b id="fms">—</b></div>
+      <div class="stat"><span>Возраст</span><b id="age">—</b></div>
+    </div>
+  </div>
+</section>
+
+<div class="grid">
+<div class="col">
+  <section class="card">
+    <div class="card-h"><div class="ic"><svg viewBox="0 0 24 24"><path d="M6 3v12M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 9a9 9 0 0 1-9 9"/></svg></div>
+      <div><h2>Почему у него такое настроение</h2><p>Правила проверяются сверху вниз: срабатывает первое подходящее</p></div></div>
+    <div class="steps">
+      <div class="step" id="n0"><div class="q"><span><span class="n">1</span>Спит?</span><em>Спит</em></div><div class="d">Пока спит, остальное не важно.</div></div>
+      <div class="step" id="n1"><div class="q"><span><span class="n">2</span>Редкая карта дня</span><em id="n1r"></em></div><div class="d" id="n1d"></div></div>
+      <div class="step" id="n2"><div class="q"><span><span class="n">3</span>Тело: батарея и здоровье</span><em id="n2r"></em></div><div class="d" id="n2d"></div></div>
+      <div class="step" id="n3"><div class="q"><span><span class="n">4</span>Послевкусие недавнего события</span><em id="n3r"></em></div><div class="d" id="n3d"></div></div>
+      <div class="step" id="n4"><div class="q"><span><span class="n">5</span>Какая потребность упала ниже своей черты сильнее всех</span><em id="n4r"></em></div>
+        <div id="urges"></div><div class="d" id="n4d"></div></div>
+      <div class="step" id="n5"><div class="q"><span><span class="n">6</span>Ночь (22–6) и энергии меньше половины?</span><em>Сонный</em></div><div class="d" id="n5d"></div></div>
+      <div class="step" id="n6"><div class="q"><span><span class="n">7</span>Чем занят: только проснулся, гуляет, заряжается</span><em id="n6r"></em></div><div class="d" id="n6d"></div></div>
+      <div class="step" id="n7"><div class="q"><span><span class="n">8</span>Как в целом живётся → палитра дня</span><em id="n7r"></em></div>
+        <div class="gauge" id="gauge"></div>
+        <div class="d" id="vexp"></div>
+        <div class="pools" id="pools" style="margin-top:8px"></div>
+      </div>
+    </div>
+    <p class="hint">Поверх этого на несколько секунд показываются реакции на то, что с ним делают: погладили, ткнули, потрясли,
+      подули, громкий звук, уронили, кормят, игры, жесты пальцами и т. д.</p>
+  </section>
+
+  <section class="card">
+    <div class="card-h"><div class="ic"><svg viewBox="0 0 24 24"><path d="M3 3v18h18M7 15l4-4 3 3 5-6"/></svg></div>
+      <div><h2>Последние сутки</h2><p>Раз в минуту брелок записывает потребности и настроение</p></div></div>
+    <div class="row"><button class="need-link" id="loadh">Загрузить с брелока</button><span class="muted" id="hinfo">Наведи на график — покажет, что было в эту минуту</span></div>
+    <canvas id="chart" width="1200" height="460"></canvas>
+    <div class="strip" id="strip"></div>
+    <div class="legend" id="legend1"></div>
+    <div class="legend" id="legend2"></div>
+  </section>
+</div>
+
+<div class="col">
+  <section class="card need-link">
+    <div class="card-h"><div class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9 10h.01M15 10h.01M8.5 15s1.3 1.5 3.5 1.5 3.5-1.5 3.5-1.5"/></svg></div>
+      <div><h2>Показать эмоцию на брелоке</h2><p>Выбери, что делает нажатие, и нажми на эмоцию</p></div></div>
+    <div class="row">
+      <div class="seg" id="pickMode">
+        <button data-m="hold" class="on">Держать</button><button data-m="flash">На 3 секунды</button><button data-m="mark">Отметить для показа</button>
+      </div>
+      <button id="auto" class="small">Вернуть как обычно</button>
+    </div>
+    <p class="hint" id="pickHint"></p>
+    <input type="search" id="mq" placeholder="Найти эмоцию" autocomplete="off">
+    <div class="moods" id="moods"><span class="muted">Список появится после подключения</span></div>
+    <div class="row">
+      <span class="muted">Показ по очереди, по</span><input type="number" id="dsec" value="3" min="1" style="width:70px"><span class="muted">с каждая:</span>
+      <button class="small" id="dall">Все подряд</button><button class="small" id="dsel">Только отмеченные</button><button class="small ghost" id="dstop">Остановить</button>
+    </div>
+  </section>
+
+  <section class="card need-link">
+    <div class="card-h"><div class="ic"><svg viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg></div>
+      <div><h2>Действия</h2><p>Как будто это сделал ты на брелоке</p></div></div>
+    <div class="acts">
+      <button data-c="feed">Покормить</button><button data-c="play">Позвать играть</button><button data-c="meet">Познакомиться</button>
+      <button data-c="sleep">Уложить спать</button><button data-c="wake">Разбудить</button><button data-c="rare">Редкая карта сейчас</button>
+      <button data-c="game 0">Пип выиграл у тебя</button><button data-c="game 1">Ты выиграл у Пипа</button><button data-c="game 2">Рекорд в игре</button>
+      <button data-c="btn 0">Верхняя кнопка</button><button data-c="btn 1">Нижняя кнопка</button><button data-c="home">К Пипу (с любого экрана)</button>
+      <button data-c="key z">Чихнуть</button><button data-c="key x">Рыгнуть</button><button data-c="key h">Икота</button>
+    </div>
+    <div class="row"><span class="muted">Открыть на брелоке:</span><select id="app"><option value="">приложение…</option></select></div>
+  </section>
+
+  <section class="card need-link">
+    <div class="card-h"><div class="ic"><svg viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></div>
+      <div><h2>Что Пип замечает</h2><p>Оранжевое — включено. Как на панели, но сразу и без сохранения настройки</p></div></div>
+    <div class="feats" id="feats"></div>
+  </section>
+
+  <section class="card need-link">
+    <div class="card-h"><div class="ic"><svg viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg></div>
+      <div><h2>Потребности и настрой</h2><p>Двигай — и сразу увидишь, как он поменяется</p></div></div>
+    <div id="needs"></div>
+  </section>
+
+  <section class="card need-link">
+    <div class="card-h"><div class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></div>
+      <div><h2>Правила характера</h2><p>Пороги и сроки, по которым он решает, что чувствовать</p></div></div>
+    <p class="hint">Для подбора чисел. Изменения живут до перезагрузки брелока; подходящие значения потом вписываются в прошивку (ui/pet.c).</p>
+    <div id="tune"><span class="muted">Появятся после подключения</span></div>
+  </section>
+</div>
+</div>
+</div>
+<div id="tip"></div>
+<script>
+/* ---------- words: everything the board says by id, in Russian ---------- */
+const MOODS = window.PIP_MOODS || {}; /* ../list/names.js: id -> [number, Russian name, how to get it] */
+const ru = id => (MOODS[id] && MOODS[id][1]) || id || '—';
+const REACT = { /* reaction names (ui/pip.c react) */
+  yum: 'ням — ест', thanks: 'спасибо за еду', 'too full': 'объелся', enough: 'хватит еды', 'no more food': 'больше не хочет есть', 'stop feeding': 'хватит кормить', food: 'летит печенье',
+  'sulky bite': 'съел, но без «спасибо»', 'sulky: no food': 'обиделся: не ест', 'sulky: no washing': 'обиделся: не даёт мыть', sulking: 'обиделся: не играет',
+  play: 'зовут играть', 'worn out': 'устал для игр', 'too dirty': 'слишком грязный, чтобы играть', won: 'выиграл у тебя', lost: 'проиграл', record: 'рекорд в игре', 'sore loser': 'проигрывает раз за разом',
+  pet: 'гладят', love: 'долго гладят', touched: 'растроган', teased: 'дразнили', tickle: 'щекочут', 'tickle: after': 'после щекотки', tickled: 'щекотно (кнопка)',
+  poke: 'тычок', 'poke: again': 'тычок: ещё!', 'poke: giggle': 'тычок: хихикает', 'poke: hey': 'тычок: эй!', 'poke: huh': 'тычок: а?', 'poke: ignore': 'тычок: не замечает', 'poke: really': 'тычок: серьёзно?', 'poke: shy': 'тычок: смутился',
+  'fed up': 'надоели тычки', 'stop it': 'хватит!', pestered: 'задёргали кнопкой', 'head spin': 'голова кругом', phew: 'фух, облегчение', 'tapped awake': 'растормошили кнопкой',
+  boop: 'буп в нос', 'side poke': 'тычок в бок', cheek: 'тычок в щёку', 'cheek rub': 'гладят щёку', chin: 'тычок в подбородок', 'chin rub': 'чешут подбородок', 'head pat': 'гладят по голове', 'finger in eye': 'палец в глазу',
+  'warm finger': 'палец лежит', tracking: 'следит за пальцем', chase: 'ловит палец', caught: 'поймал палец!', dodged: 'увернулся от пальца', flinch: 'отпрянул', crouch: 'приготовился прыгнуть',
+  flick: 'щелчок пальцем', 'flick: catch': 'щелчок: ловит', 'flick: hey': 'щелчок: эй!', 'flick: what': 'щелчок: что?', 'flick: whoosh': 'щелчок: вжух',
+  'eyes closed': 'закрыли глаза пальцем', 'eyes pried open': 'раскрыли глаза пальцем', 'eyes: hm': 'глаза вверх: хм', 'eyes: not sleepy': 'глаза вниз: не хочет спать', 'eyes: peek': 'глаза вниз: подглядывает',
+  'eyes: pop open': 'глаза вниз: распахнул', 'eyes: tickles': 'глаза: щекотно', 'eyes: wide': 'глаза вверх: широко раскрыл', lulled: 'убаюкали',
+  spiral: 'спираль пальцем', 'spiral: drowsy': 'спираль: клонит в сон', 'spiral: spellbound': 'спираль: заворожён', 'spiral: stop': 'спираль: хватит', 'spiral: tickles': 'спираль: щекотно', 'spiral: uneasy': 'спираль: неуютно', 'spiral: what': 'спираль: что?',
+  spun: 'отпустили после спирали', 'spun: again': 'после спирали: ещё!', 'spun: dizzy': 'после спирали: кружится голова', 'spun: enough': 'после спирали: хватит', 'spun: phew': 'после спирали: фух', 'spun: spellbound': 'после спирали: заворожён',
+  palm: 'ладонь сверху', 'palm off': 'ладонь убрали', stretched: 'глаза растянули', 'let go': 'отпустили — бдыщ', pinched: 'глаза свели', popped: 'отпустили — чпок', 'two fingers': 'два пальца разом', 'fingers gone': 'пальцы убрали',
+  dizzy: 'голова кружится', 'shaken hard': 'сильно потрясли', 'shaken silly': 'растрясли', 'shaken: giggle': 'потрясли: хихикает', 'shaken: hey': 'потрясли: эй!', 'shaken: light': 'слегка потрясли', 'shaken: scared': 'потрясли: страшно', 'shaken: whee': 'потрясли: уии!',
+  swing: 'качают', rocked: 'укачивают', 'rocked: bored': 'укачивают: скучно', 'rocked: not sleepy': 'укачивают: не хочет спать', 'rocked: whee': 'укачивают: уии!', tumbling: 'кувыркается', 'tumbled out': 'накувыркался',
+  'upside down': 'вверх ногами', peekaboo: 'прятки', 'face down': 'лежит экраном вниз', 'woke up': 'проснулся', dropped: 'уронили!', thrown: 'бросили!', 'walk goal': 'норма шагов набрана',
+  blown: 'подули', 'blown: breeze': 'подули: ветерок', 'blown: chilly': 'подули: зябко', 'blown: enough': 'подули: хватит', 'blown: hm': 'подули: хм', 'blown: scared': 'подули: страшно', 'blown: stop': 'подули: перестань',
+  'blown: tickles': 'подули: щекотно', 'blown: whoa': 'подули: ого', cold: 'замёрз', shiver: 'дрожит от холода', drying: 'сохнет', dry: 'высох', 'shakes off': 'отряхивается', bang: 'громкий звук!',
+  scrub: 'моют — нравится', 'scrub: clean': 'моют: уже чистый', 'not dirty': 'моют чистого — злится', fresh: 'чистенький!', washed: 'помыли', 'sponge away': 'швырнул губку!', sorry: 'виновато',
+  'perked up': 'взбодрился', meet: 'знакомство', hello: 'привет!', 'says hi': 'здоровается', "glad you're back": 'рад, что вернулся', sulks: 'дуется: долго не заходили', 'misses you': 'скучает по тебе',
+  'made up': 'помирились', softening: 'оттаивает', 'still cross': 'гладят, но ещё злится', jealous: 'ревнует к телефону',
+  groove: 'качается в такт', drums: 'отстукивает ритм', 'your turn': 'твой ход', 'right beat': 'верно!', 'wrong beat': 'не тот ритм', 'rhythm master': 'мастер ритма', 'no answer': 'никто не повторил',
+  dancing: 'танцует', 'danced out': 'натанцевался', birthday: 'с днём рождения!', festive: 'праздник', charging: 'зарядка — ням', overcharged: 'перезарядили — обиделся',
+  'unplugged right': 'сняли с зарядки вовремя', 'cable fiddling': 'хватит дёргать кабель', 'cable again': 'опять кабель?', awake: 'включили', drained: 'разрядили до нуля — злится',
+  "time's up": 'таймер!', sneeze: 'чихает', burp: 'отрыжка', hic: 'икает', 'hiccups gone': 'икота прошла', toot: 'пук!', coughs: 'кашляет',
+  chats: 'болтает', tells: 'рассказывает', yawns: 'зевает', sighs: 'вздыхает', giggles: 'хихикает', hums: 'напевает', ponders: 'размышляет', aha: 'ага!', 'rolls eyes': 'закатывает глаза',
+  'looks around': 'оглядывается', 'nervous look': 'нервно оглядывается', 'sees something': 'что-то увидел', 'shy look': 'смущённо смотрит', 'fake sleep': 'притворяется спящим', boo: 'бу! (раскусили)', peeks: 'подглядывает',
+  hop: 'подпрыгнул', winks: 'подмигивает', 'zones out': 'залипает', schemes: 'что-то задумал', daydreams: 'мечтает', bliss: 'блаженствует', 'adores you': 'любуется тобой', waits: 'ждёт тебя',
+  'starry-eyed': 'звёзды в глазах', sings: 'поёт', kisses: 'чмок!', flirts: 'кокетничает', rainbow: 'переливается', hides: 'прячется и выглядывает', zen: 'дзен', melts: 'растаял', claps: 'аплодирует',
+  cool: 'в очках', 'puppy eyes': 'щенячьи глазки', butterfly: 'бабочка', bubbles: 'мыльные пузыри', robot: 'робот', purrs: 'мурлычет', clowns: 'дурачится', snickers: 'давится смехом', campfire: 'у костра',
+  stargazes: 'смотрит на звёзды', 'charging: zap': 'зарядка — молния!', 'charging: sip': 'зарядка — пьёт ток',
+  'stop knocking': 'хватит стучать',
+  squeals: 'хохочет «> <»', 'rolls laughing': 'катается со смеху', bounces: 'скачет мячиком', blooms: 'цветы вокруг', 'heart eyes': 'глаза-сердечки',
+  fireworks: 'салют', medal: 'медаль', 'eyes pop': 'глаза на лоб', 'bright idea': 'лампочка: придумал!', 'hides in paws': 'прячется в лапки',
+  'waves hi': 'машет: привет!', king: 'король', angel: 'ангелочек', imp: 'проказник', juggles: 'жонглирует', balloon: 'воздушный шарик',
+  'ice cream': 'мороженое', umbrella: 'под зонтиком', 'lifts weights': 'поднимает штангу', 'magic trick': 'фокус!', 'good morning': 'доброе утро',
+  'counts sheep': 'считает овец', ninja: 'ниндзя', sprouts: 'вырос росток', 'rain cloud': 'своя тучка', sobs: 'ревёт', heartbroken: 'разбитое сердце',
+  fumes: 'закипает', burns: 'горит от злости', 'turns away': 'отвернулся: хмф!', spooked: 'привидение!', tumbleweed: 'перекати-поле',
+  'run down': 'батарейка села', 'dreams of food': 'мечтает о печенье', 'knocked out': 'нокаут', wilts: 'тоска', sniffles: 'простудился',
+  'unplugged: full': 'кабель вытащили: зарядился', 'unplugged: low': 'кабель вытащили: не допил', 'unplugged: empty': 'кабель вытащили: обесточен', queasy: 'тошнит от еды', 'new year tree': 'ёлочка (1 января)', wreath: 'рождественский венок (1 января)'
+};
+const reactRu = r => !r ? '' : REACT[r] || (MOODS[r] ? ru(r) : r);
+const SCREENS = { pip: 'Пип', menu: 'меню', care: 'Пип: забота', games: 'игры', tools: 'утилиты', phone: 'телефон', settings: 'настройки', clock: 'часы', timer: 'таймер', stopwatch: 'секундомер',
+  noise: 'шумомер', torch: 'фонарик', xo: 'крестики-нолики', pong: 'пинг-понг', snake: 'змейка', flight: 'Flappy Pip', repeat: 'Повтори за мной', ball: 'шарик', eight: 'шар предсказаний', coin: 'монетка',
+  dice: 'кубик', maze: 'лабиринт', notify: 'уведомления', music: 'музыка', camera: 'камера', locate: 'локатор', sound: 'звуки', style: 'темы', bright: 'яркость', eyes: 'глаза', privacy: 'приватность',
+  bt: 'Bluetooth', pair: 'сопряжение', call: 'звонок', banner: 'уведомление', tired: '«Пип устал»', timer_done: '«Время вышло»', setup: 'режим настройки' };
+const APPS = ['care', 'clock', 'timer', 'stopwatch', 'noise', 'torch', 'xo', 'pong', 'snake', 'flight', 'repeat', 'ball', 'eight', 'coin', 'dice', 'maze',
+  'notify', 'music', 'camera', 'locate', 'sound', 'style', 'bright', 'eyes', 'privacy', 'bt']; /* ui/apps.c apps[] */
+const NEED = ['Еда', 'Энергия', 'Веселье', 'Любовь', 'Прогулки', 'Чистота'];
+const NEEDC = ['#ff9f0a', '#5aa9ff', '#bf5af2', '#ff375f', '#30d158', '#64d2ff'];
+const POOLS = ['отлично', 'хорошо', 'так себе', 'плохо'];
+/* the palettes as ui/pet.c pet_mood_why has them (the day's, then the evening's); the number is the weight */
+const POOLM = [
+  ['happy 3', 'cheeky 2', 'curious 2', 'amazed 2', 'content 2', 'smug 1'], ['content 3', 'comfy 2', 'curious 2', 'amazed 1', 'neutral 2', 'cheeky 1'],
+  ['neutral 3', 'skeptical 2', 'curious 2', 'suspicious 2', 'bored 1', 'cynical 1'], ['sad 3', 'despondent 2', 'gloomy 2', 'cynical 1', 'dismayed 1', 'hurt 1'],
+  ['happy 2', 'content 3', 'comfy 2', 'cheeky 1', 'smug 1', 'love 1'], ['comfy 3', 'content 3', 'neutral 2', 'sleepy 1', 'curious 1', 'skeptical 1'],
+  ['neutral 3', 'bored 2', 'skeptical 2', 'sleepy 1', 'cynical 1', 'suspicious 1'], ['sad 3', 'gloomy 3', 'despondent 2', 'lonely 1', 'tired 1', 'cynical 1']];
+const BODY = [['батарея почти пуста', 'sick'], ['две потребности на нуле', 'sick'], ['батарея садится', 'tired'], ['батарея ниже нормы', 'nervous'],
+  ['перезаряд: долго полный на зарядке', 'annoyed'], ['болен: долго грязный или простыл мокрым', 'sick']];
+const AFTER = [['выиграл у тебя', 'smug'], ['проиграл тебе', 'indignant'], ['рекорд в игре', 'amazed'], ['испуг: громкий звук или уронили', 'afraid'],
+  ['пачка уведомлений', 'dismayed'], ['обида: долго не заходили', 'hurt'], ['рад, что вернулись', 'happy'], ['надоели тычки', 'annoyed'],
+  ['проигрывает раз за разом', 'sad'], ['задёргали нижней кнопкой', 'hurt'], ['помыли — свежий', 'content'], ['набрал норму шагов', 'proud'], ['уронили', 'hurt'],
+  ['бросили', 'hurt'], ['ревнует к телефону', 'pouty'], ['ночью будили уведомления', 'angry'], ['держали на зарядке полным', 'hurt'], ['сняли с зарядки вовремя', 'happy'], ['дёргали кабель', 'annoyed'],
+  ['ещё не отошёл от злости', 'hurt'], ['разрядили до нуля и включили', 'angry']];
+const SITU = [['только проснулся', 'sleepy'], ['гуляет', 'curious'], ['на зарядке', 'comfy']];
+const FEAT = ['Тряска', 'Дуть на него', 'Экраном вниз', 'Голос', 'Батарея', 'Время идёт', 'Громкие звуки', 'Музыка', 'Падения', 'Просыпается от движения', 'Перевороты', 'Чихает', 'Рыгает', 'Пукает']; /* ui/pip.h PIP_F_* */
+/* every rule of ui/pet.c pet_knobs[]: group, what it is (in words a person reads) */
+const KNOB = {
+  great: ['Палитра дня', '«отлично» с настроения выше'], good: ['Палитра дня', '«хорошо» с настроения выше'], meh: ['Палитра дня', '«так себе» с настроения выше'],
+  hyst: ['Палитра дня', 'залипание у границы палитр'], evening_h: ['Палитра дня', 'вечер начинается, час'], drift: ['Палитра дня', 'как сильно гуляет настрой за час'],
+  everyday: ['Палитра дня', 'доля повседневных лиц (0 — классическая палитра)'], calm: ['Палитра дня', 'плавная смена настроения без причины (0 — нет, 1 — да)'],
+  stale: ['Потребности', 'другое лицо той же потребности через, мин'], sick_line: ['Потребности', '«болен», если две потребности ниже'], hungry_line: ['Еда', '«благодарен», если кормят при еде ниже'],
+  full_line: ['Еда', 'сыт при еде выше'], disgust_s: ['Еда', '«брезгливость»: кормят снова в течение, с'], die_h: ['Еда', 'умирает через столько часов без еды'],
+  rare_chance: ['Редкая карта', 'шанс в день'], rare_min: ['Редкая карта', 'длится, мин'],
+  bat_low: ['Батарея', '«нервничает» при заряде ниже, %'], bat_tired: ['Батарея', '«устал» при заряде ниже, %'], bat_empty: ['Батарея', '«болен» при заряде ниже, %'],
+  drain_food: ['Батарея', 'разрядили до нуля: отнимает еды'], drain_energy: ['Батарея', 'разрядили до нуля: отнимает энергии'], after_drained: ['Батарея', 'злится после разряда до нуля, с'],
+  overcharge_h: ['Зарядка', 'перезаряд после стольких часов на 100%'], after_overcharge: ['Зарядка', 'обида после перезаряда, с'], unplug_lo: ['Зарядка', 'снять вовремя: от, %'], unplug_hi: ['Зарядка', 'снять вовремя: до, %'],
+  after_unplug: ['Зарядка', 'радость «сняли вовремя», с'], unplug_min: ['Зарядка', 'похвала, если заряжался не меньше, мин'], unplug_gap: ['Зарядка', 'похвала не чаще раза в, ч'],
+  fiddle_n: ['Зарядка', 'дёргание кабеля: втыканий'], fiddle_s: ['Зарядка', 'дёргание кабеля: за, с'], after_fiddle: ['Зарядка', 'раздражение от кабеля, с'],
+  waking_min: ['Сон', 'сонный после пробуждения, мин'], rewake_min: ['Сон', '«возмущён», если разбудили снова за, мин'], nap_rest: ['Сон', 'дремота при погасшем экране отдыхает (доля)'],
+  night_drain: ['Сон', 'ночью (23–7) потребности тают быстрее, ×'], walk_now: ['Прогулка', '«гуляет», если недавно шагов больше'],
+  away_h: ['Встреча', 'долго не трогали — от, ч'], sulk_love: ['Встреча', 'обижен при встрече, если любовь ниже'],
+  meet_like: ['Встреча', 'шанс понравиться при знакомстве, %'], meet_shy: ['Встреча', 'доля «застенчивый» среди «нравится»'], meet_wary: ['Встреча', 'доля «подозрительный» среди «не нравится»'], meet_rude: ['Встреча', '«воинственный» при раздражении от'],
+  after_win: ['Послевкусие, с', 'выиграл у тебя → самодовольный'], after_lose: ['Послевкусие, с', 'проиграл → возмущён'], after_record: ['Послевкусие, с', 'рекорд → изумлён'],
+  after_fright: ['Послевкусие, с', 'испуг → боится'], after_flood: ['Послевкусие, с', 'пачка уведомлений → растерян'], after_sulk: ['Послевкусие, с', 'долго не заходили → обижен'],
+  after_missed: ['Послевкусие, с', 'вернулись → радость'], after_fed_up: ['Послевкусие, с', 'надоели тычки → раздражён'], after_proud: ['Послевкусие, с', 'норма шагов → гордый'],
+  after_dropped: ['Послевкусие, с', 'уронили → обижен'], after_thrown: ['Послевкусие, с', 'бросили → обижен'], after_jealous: ['Послевкусие, с', 'ревность → надулся'], after_night: ['Послевкусие, с', 'плохая ночь → злой'],
+  after_washed: ['Чистота', '«свежий» после мытья, с'], night_notes: ['Уведомления', 'столько ночью — утром злой'], flood_n: ['Уведомления', 'пачка: штук'], flood_s: ['Уведомления', 'пачка: за, с'],
+  jealous_s: ['Ревность', 'внимания телефону, с'], jealous_chance: ['Ревность', 'шанс надуться'], jealous_gap: ['Ревность', 'не чаще раза в, мин'],
+  trust_day: ['Доверие', 'прибавка за день, не больше'], trust_flinch: ['Доверие', 'вздрагивает при доверии ниже'], trust_bold: ['Доверие', 'здоровается сам при доверии выше'],
+  loud_db: ['Звук', 'громкий звук громче, дБ'], loud_jump: ['Звук', 'и громче комнаты на, дБ'], shock_db: ['Звук', '«шок» громче, дБ'],
+  furious: ['Злость', '«в ярости» при раздражении от'], rage: ['Злость', '«бешенство» от'], swear: ['Злость', '«ругается» от'], berserk: ['Злость', '«безумие» от'],
+  cross_good: ['Злость', 'в хороший день злость тяжелее, ×'], swear_v: ['Злость', '«ругается» только при настроении ниже'], berserk_v: ['Злость', '«безумие» только при настроении ниже'],
+  grudge_fade: ['Обида', 'тает за час'], grudge_show: ['Обида', 'видна в настроении выше'], grudge_forgive: ['Обида', 'поглаживание не мирит выше'], grudge_refuse: ['Обида', 'отказывается от еды и мытья выше'],
+  grudge_play: ['Обида', '«Пип обиделся» — не играет выше'], coax: ['Обида', 'как быстро долгое поглаживание мирит'],
+  play_tired: ['Игры', '«нет» играть при энергии ниже'], play_bored: ['Игры', '«да» играть при веселье ниже'], play_dirty: ['Игры', 'не играет при чистоте ниже'],
+  perk_shake: ['Сонливость', 'шанс взбодриться от тряски'], perk_poke: ['Сонливость', 'шанс взбодриться от тычка'], perk_stroke: ['Сонливость', 'шанс взбодриться от поглаживания'],
+  perk_touch: ['Сонливость', 'шанс взбодриться от касания'], perk_min: ['Сонливость', 'бодрость держится, мин'],
+  tap_quick: ['Нижняя кнопка', 'серия: нажатия чаще, с'], tap_slow: ['Нижняя кнопка', 'ритм: нажатия реже, с'], tap_even: ['Нижняя кнопка', 'ритм: разброс не больше (доля)'],
+  tap_tickle: ['Нижняя кнопка', '«щекотно» с нажатия'], tap_annoy: ['Нижняя кнопка', '«хватит» с нажатия'], tap_angry: ['Нижняя кнопка', '«задёргали» на нажатии'],
+  tap_spin: ['Нижняя кнопка', '«голова кругом» на нажатии'], tap_wake: ['Нижняя кнопка', 'спящего будят нажатий подряд'], after_pester: ['Нижняя кнопка', 'обида «задёргали», с'], pester_love: ['Нижняя кнопка', '«задёргали» отнимает любви'],
+  dust_line: ['Чистота', 'пыль видна при чистоте ниже'], wash_rate: ['Чистота', 'мытьё: чистоты за секунду'], wash_clean: ['Чистота', 'мыть уже чистого (злится) от'],
+  wash_refuse_s: ['Чистота', 'мыли чистого дважды за, с → не даёт мыть'], wash_push: ['Чистота', 'трут чистого дольше, с → швыряет губку'], ill_h: ['Чистота', 'грязный заболевает за, ч'],
+  sneeze_poke: ['Тело', 'шанс чиха за каждый тычок'], sneeze_min: ['Тело', 'сам чихает раз в, мин'], burp_dirty: ['Тело', 'шанс отрыжки после печенья, если грязный'], burp_min: ['Тело', 'грязный сам рыгает раз в, мин'],
+  dance_s: ['Танец', 'танцует подряд, с'], dance_rest: ['Танец', 'отдых после танца, с'], dance_break: ['Танец', 'пауза, если потрогали, с'], dance_will: ['Танец', 'охота танцевать (выше — чаще)'],
+  bday_gap: ['День рождения', 'праздничные всплески раз в, мин'], bday_encore: ['День рождения', 'доля всплесков с песней'],
+  vary: ['Живость', 'разнообразие ответов (0 — всегда один и тот же)'], zones: ['Живость', 'щёки, подбородок, бока, палец на глазу (0 — обычный тычок)'], life_gap: ['Живость', 'сам что-то делает раз в ~, с (0 — никогда)'],
+  talk: ['Живость', 'разговорчивость (0 — молчит)'], hold: ['Живость', 'эмоция держится не меньше, с'], snd_refill: ['Живость', 'звук восстанавливается за, с (0 — без ограничений)'],
+  rock_s: ['Живость', 'укачать уставшего, с'], cold_s: ['Живость', 'дуть до замерзания, с'], dry_s: ['Живость', 'мокрый высыхает сам, с'], chase_s: ['Живость', 'погоня за пальцем после, с']
+};
+const $ = id => document.getElementById(id);
+let names = [], tune = null, st = null, knobs = {}, hist = [], histBuf = [], picked = new Set(), dragging = false, pickMode = 'hold';
+
+/* ---------- the link: the cable (Web Serial), Bluetooth, or tools/pipdebug.py's bridge ---------- */
+const SVC = '50495044-4247-4b45-5950-455400000001', RX = '50495044-4247-4b45-5950-455400000002', TX = '50495044-4247-4b45-5950-455400000003';
+let bt = null, btq = Promise.resolve(), usb = null, usbq = Promise.resolve(), bridge = false;
+function via(text, on) { $('via').textContent = text; if (on != null) document.body.classList.toggle('offline', !on); }
+const send = c => {
+  const data = new TextEncoder().encode(c + '\n');
+  if (usb && usb.writable) { /* one writer at a time: a second getWriter() while a write holds the lock throws */
+    const p = usb;
+    usbq = usbq.then(async () => { const w = p.writable.getWriter(); try { await w.write(data); } finally { w.releaseLock(); } }).catch(() => {});
+    return usbq;
+  }
+  if (!bt) return bridge ? fetch('/cmd', {method: 'POST', body: c}).catch(() => {}) : Promise.resolve();
+  for (let i = 0; i < data.length; i += 20) btq = btq.then(() => bt.writeValueWithoutResponse(data.slice(i, i + 20))).catch(() => {}); /* the smallest MTU */
+  return btq;
+};
+if (!('serial' in navigator)) $('usb').disabled = true, $('usb').title = 'Этот браузер не умеет работать с кабелем — открой в Chrome или Edge на компьютере';
+if (!('bluetooth' in navigator)) $('bt').disabled = true, $('bt').title = 'Этот браузер не умеет Bluetooth — открой в Chrome или Edge';
+/* the cable: picked by the button, or taken over at once from the panel (its "Открыть отладку" lets the port go first):
+   a port this site was given before opens again with no picker (the panel and this page share the site) */
+async function openUsb(port) {
+  usb = port;
+  await usb.open({baudRate: 115200});
+    try { await usb.setSignals({dataTerminalReady: false, requestToSend: false}); } catch (e) {} /* no reset of the board */
+    via('По кабелю', true);
+    (async () => {
+      const dec = new TextDecoder(), r = usb.readable.getReader();
+      let acc = '';
+      try {
+        for (;;) {
+          const {value, done} = await r.read();
+          if (done) break;
+          acc += dec.decode(value, {stream: true});
+          let i;
+          while ((i = acc.indexOf('\n')) >= 0) { onLine(acc.slice(0, i).replace(/\r$/, '')); acc = acc.slice(i + 1); }
+        }
+      } catch (e) {}
+      usb = null; via('Кабель отключён', false);
+    })();
+  setTimeout(() => { send('names'); send('tune'); }, 800);
+}
+const usbBusy = e => via(e.name === 'InvalidStateError' || /open/i.test(e.message) ? 'Порт занят: закрой панель или другую отладку' : 'Не удалось подключиться по кабелю', false);
+$('usb').onclick = async () => {
+  let port;
+  try { port = await navigator.serial.requestPort({filters: [{usbVendorId: 0x303a}]}); } catch (e) { return; } /* the picker closed */
+  try { await openUsb(port); } catch (e) { usb = null; usbBusy(e); }
+};
+/* on opening: the keychain this site already knows, if it is on the cable (the panel hands it over this way) */
+async function autoUsb() {
+  if (!('serial' in navigator) || usb || bt) return;
+  const ports = (await navigator.serial.getPorts()).filter(p => p.getInfo().usbVendorId === 0x303a);
+  if (!ports.length) return;
+  for (let k = 0; k < 6 && !usb; k++) { /* the panel may still be letting it go: a few tries over a couple of seconds */
+    try { await openUsb(ports[0]); return; } catch (e) { usb = null; if (k === 5) usbBusy(e); else await new Promise(r => setTimeout(r, 400)); }
+  }
+}
+navigator.serial?.addEventListener('connect', () => autoUsb()); /* plugged in while the page is open */
+$('bt').onclick = async () => {
+  try {
+    const dev = await navigator.bluetooth.requestDevice({filters: [{name: 'Pip'}], optionalServices: [SVC]});
+    const srv = await dev.gatt.connect(), svc = await srv.getPrimaryService(SVC);
+    const tx = await svc.getCharacteristic(TX);
+    bt = await svc.getCharacteristic(RX);
+    let acc = '';
+    const dec = new TextDecoder(); /* streaming: a Cyrillic letter may be split across two notifications */
+    tx.addEventListener('characteristicvaluechanged', e => {
+      acc += dec.decode(e.target.value, {stream: true});
+      let i;
+      while ((i = acc.indexOf('\n')) >= 0) { onLine(acc.slice(0, i)); acc = acc.slice(i + 1); }
+    });
+    await tx.startNotifications();
+    dev.addEventListener('gattserverdisconnected', () => { bt = null; via('Bluetooth отключился', false); });
+    via('По Bluetooth', true);
+    send('names'); send('tune');
+  } catch (e) { if (e.name !== 'NotFoundError') via('Не удалось подключиться по Bluetooth', false); }
+};
+function connectBridge() { /* tools/pipdebug.py: the board's lines as server-sent events, commands by POST */
+  if (location.protocol === 'file:' || /github\.io$/.test(location.hostname)) return;
+  const es = new EventSource('/events');
+  es.onopen = () => { bridge = true; };
+  es.onmessage = e => { if (!bt && !usb) { if ($('via').textContent !== 'Через pipdebug') via('Через pipdebug', true); onLine(e.data); } };
+  es.onerror = () => { es.close(); if (bridge) setTimeout(connectBridge, 1000); };
+}
+
+/* ---------- controls ---------- */
+const HINTS = { hold: 'Нажатие — Пип покажет эмоцию и будет держать её, пока не нажмёшь «Вернуть как обычно».',
+  flash: 'Нажатие — эмоция на 3 секунды, как реакция, потом он вернётся к своему настроению.',
+  mark: 'Нажатие — отметить эмоцию для показа по очереди (кнопка «Только отмеченные» внизу).' };
+document.querySelectorAll('#pickMode button').forEach(b => b.onclick = () => {
+  pickMode = b.dataset.m; document.querySelectorAll('#pickMode button').forEach(x => x.classList.toggle('on', x === b)); $('pickHint').textContent = HINTS[pickMode];
+});
+$('pickHint').textContent = HINTS.hold;
+APPS.forEach(a => $('app').add(new Option(SCREENS[a] ? SCREENS[a][0].toUpperCase() + SCREENS[a].slice(1) : a, a)));
+$('app').onchange = e => { if (e.target.value) send('open ' + e.target.value); e.target.value = ''; };
+document.querySelectorAll('[data-c]').forEach(b => b.onclick = () => send(b.dataset.c));
+$('auto').onclick = () => send('auto');
+$('loadh').onclick = () => { histBuf = []; $('hinfo').textContent = 'Загружаю…'; send('hist'); };
+$('dall').onclick = () => send('demo ' + $('dsec').value);
+$('dsel').onclick = () => picked.size ? send('demo ' + $('dsec').value + ' ' + [...picked].join(' ')) : alert('Сначала отметь эмоции: режим «Отметить для показа»');
+$('dstop').onclick = () => send('demo 0');
+$('mq').oninput = () => { const w = $('mq').value.toLowerCase(); document.querySelectorAll('#moods button').forEach(b => b.hidden = !!w && !b.textContent.toLowerCase().includes(w) && !b.dataset.id.includes(w)); };
+
+function slider(parent, label, min, max, step, val, cmd, fmt = v => (+v).toFixed(2)) {
+  const d = document.createElement('div'); d.className = 'sl';
+  d.innerHTML = `<span></span><input type="range" min="${min}" max="${max}" step="${step}" value="${val}"><output>${fmt(val)}</output>`;
+  d.children[0].textContent = label;
+  const r = d.children[1], o = d.children[2];
+  r.oninput = () => { o.textContent = fmt(r.value); dragging = true; send(cmd(r.value)); };
+  r.onchange = () => dragging = false;
+  parent.appendChild(d);
+  return {set: v => { if (!dragging) r.value = v, o.textContent = fmt(v); }};
+}
+const pct = v => Math.round(v * 100) + '%';
+const needS = NEED.map((n, i) => slider($('needs'), n, 0, 1, 0.01, 0.5, v => `need ${i} ${v}`, pct));
+const dayS = slider($('needs'), 'Настрой дня (−1 плохой … +1 отличный)', -1, 1, 0.01, 0, v => `day ${v}`);
+const annS = slider($('needs'), 'Раздражение', 0, 5, 0.1, 0, v => `annoy ${v}`, v => (+v).toFixed(1));
+const grS = slider($('needs'), 'Обида (осадок злости)', 0, 1, 0.01, 0, v => `grudge ${v}`, pct);
+
+FEAT.forEach((f, i) => { const b = document.createElement('button'); b.textContent = f; b.dataset.f = i;
+  b.onclick = () => send(`feat ${i} ${b.classList.contains('on') ? 0 : 1}`); $('feats').appendChild(b); });
+
+function buildMoods() {
+  $('moods').innerHTML = '';
+  names.forEach((n, i) => { const b = document.createElement('button'); b.textContent = ru(n); b.dataset.i = i; b.dataset.id = n;
+    b.title = (MOODS[n] ? MOODS[n][2] + ' · ' : '') + n + ', №' + i;
+    b.onclick = () => { if (pickMode === 'mark') { picked.has(i) ? picked.delete(i) : picked.add(i); b.classList.toggle('sel'); }
+      else send(pickMode === 'flash' ? `react ${i} 3` : `mood ${i}`); };
+    $('moods').appendChild(b); });
+}
+function buildTune() {
+  $('tune').innerHTML = '';
+  const add = (title, fill) => { const d = document.createElement('details'); d.className = 'grp'; d.innerHTML = '<summary></summary>';
+    d.firstChild.textContent = title; $('tune').appendChild(d); fill(d); };
+  add('Черты потребностей: ниже черты — показывает', d => tune.urges.forEach((u, i) =>
+    slider(d, `${NEED[u[0]]} → ${ru(names[u[2]])} / ${ru(names[u[3]])}`, 0.02, 0.6, 0.01, u[1], v => `urge ${i} ${v}`, pct)));
+  const groups = {};
+  Object.entries(knobs).forEach(([n, k]) => (groups[(KNOB[n] || ['Прочее'])[0]] ??= []).push([n, k]));
+  Object.entries(groups).forEach(([g, list]) => add(g, d => list.forEach(([n, k]) =>
+    slider(d, (KNOB[n] || [0, n])[1], k.min, k.max, (k.max - k.min) / 200, k.v, v => `set ${n} ${v}`))));
+}
+const kn = n => knobs[n]?.v;
+const mins = s => s < 0 ? '—' : s < 120 ? Math.round(s) + ' с' : s < 7200 ? Math.round(s / 60) + ' мин' : (s / 3600).toFixed(1) + ' ч';
+const lit = (id, on) => $(id).textContent = on || '';
+
+/* ---------- the status: what he shows, and the tree that picked it ---------- */
+function render() {
+  if (!st) return;
+  const face = $('face');
+  if (MOODS[st.m] && face.dataset.m !== st.m) face.dataset.m = st.m, face.innerHTML = `<img src="../list/img/${st.m}.webp" alt="">`;
+  $('mood').textContent = ru(st.m);
+  $('moodSub').innerHTML = st.r ? `Реакция: <b></b>` : 'Своё настроение, без реакции';
+  if (st.r) $('moodSub').querySelector('b').textContent = reactRu(st.r);
+  $('mode').textContent = st.demo ? `показ по ${st.demo} с` : st.auto ? 'он сам' : 'закреплено тобой';
+  $('scr').textContent = SCREENS[st.scr] || st.scr; $('hour').textContent = st.h + ':00';
+  $('bat').textContent = st.bat < 0 ? '—' : st.bat + '%' + (st.ch ? ' · заряжается' : '');
+  $('db').textContent = st.db < 0 ? 'выключен' : st.db + ' дБ'; $('steps').textContent = st.st;
+  $('fms').textContent = st.fms + ' мс' + (st.fw && st.fw[0] > 0 ? ` (худший ${st.fw[0]})` : '');
+  $('fms').title = st.fw && st.fw[0] > 0 ? `Самый долгий кадр за 5 секунд: ${st.fw[0]} мс, на эмоции «${ru(st.fw[1])}»${st.fw[2] ? ', ' + reactRu(st.fw[2]) : ''}` : '';
+  $('age').textContent = st.age == null ? '—' : st.age < 0 ? 'умер' : st.age === 0 ? 'ещё не родился' : st.age + '-й день';
+  document.querySelectorAll('#moods button').forEach(b => b.classList.toggle('on', +b.dataset.i === st.mi));
+  document.querySelectorAll('#feats button').forEach(b => b.classList.toggle('on', !!(st.feat >> b.dataset.f & 1)));
+  $('auto').classList.toggle('on', !st.auto);
+  st.n.forEach((v, i) => needS[i] && needS[i].set(v)); dayS.set(st.day); annS.set(st.an); if (st.gr != null) grS.set(st.gr);
+  const [kind, which] = st.why, nm = i => ru(names[i]);
+  for (let k = 0; k < 8; k++) $('n' + k).className = 'step' + (k === kind ? ' hit' : k < kind ? ' pass' : '');
+  const [rm, rat] = st.rare, rareMin = (kn('rare_min') ?? 20) * 60;
+  lit('n1r', kind === 1 && nm(rm));
+  $('n1d').textContent = rm < 0 ? 'Сегодня карты нет (выпадает примерно раз в 10 дней, с 9 до 21 часа).' : rat > 0 ? `Сегодня выпала «${nm(rm)}», начнётся через ${mins(rat)}.` :
+    rat > -rareMin ? `«${nm(rm)}» идёт ещё ${mins(rareMin + rat)}.` : `Сегодня «${nm(rm)}» уже была.`;
+  lit('n2r', kind === 2 && BODY[which] && ru(BODY[which][1]));
+  $('n2d').textContent = (kind === 2 && BODY[which] ? BODY[which][0][0].toUpperCase() + BODY[which][0].slice(1) + '. ' : '') +
+    (st.bat < 0 ? 'Заряд неизвестен.' : `Заряд ${st.bat}%${st.ch ? ' (заряжается — не считается)' : ''}.`) +
+    ` Пороги: болен ниже ${kn('bat_empty')}%, устал ниже ${kn('bat_tired')}%, нервничает ниже ${kn('bat_low')}%.`;
+  const [am, aw, al] = st.af;
+  lit('n3r', kind === 3 && (which === 19 ? ru(st.m) : nm(am)));
+  $('n3d').textContent = (am >= 0 && al > 0 && AFTER[aw] ? `${AFTER[aw][0][0].toUpperCase() + AFTER[aw][0].slice(1)} → «${nm(am)}», ещё ${mins(al)}.` : 'Ничего не случилось.') +
+    (st.gr > 0 ? ` Обида: ${pct(st.gr)}${kind === 3 && which === 19 ? ' — видна в настроении' : ''}.` : '');
+  if (tune) {
+    let h = '';
+    tune.urges.forEach((u, i) => {
+      const v = st.n[u[0]], below = v < u[1], win = kind === 4 && (which & 15) === i;
+      h += `<div class="urge${win ? ' win' : ''}"><span>${NEED[u[0]]}</span><div class="meter"><i style="width:${v * 100}%;background:${NEEDC[u[0]]}"></i><u style="left:${u[1] * 100}%"></u></div>` +
+        `<span>${pct(v)}${below ? ' · ниже черты' : ''}</span></div>`;
+    });
+    $('urges').innerHTML = h;
+    lit('n4r', kind === 4 && nm(tune.urges[which & 15][which & 16 ? 3 : 2]));
+    const x = v => ((v + 1) / 2 * 100) + '%', p = [kn('great'), kn('good'), kn('meh')];
+    $('gauge').innerHTML = `<u style="left:${x(p[2])}"><span>так себе</span></u><u style="left:${x(p[1])}"><span>хорошо</span></u>` +
+      `<u style="left:${x(p[0])}"><span>отлично</span></u><b style="left:${x(Math.max(-1, Math.min(1, st.v)))}"></b>`;
+  }
+  const [hk, hs] = st.hold;
+  $('n4d').textContent = 'Красная черта — порог: ниже него потребность показывается. Почти равные показываются по очереди каждые 5 минут, ' +
+    `а если одна держится дольше ${kn('stale')} мин — у неё появляется другое лицо.` + (hk >= 0 ? ` Сейчас держится ${mins(hs)}.` : '');
+  $('n5d').textContent = `Сейчас ${st.h}:00, энергия ${pct(st.n[1])}.`;
+  lit('n6r', kind === 6 && SITU[which] && ru(SITU[which][1]));
+  $('n6d').textContent = `Проснулся ${st.wake < 0 ? 'давно' : mins(st.wake) + ' назад'} (сонный первые ${kn('waking_min')} мин). Недавно шагов: ${st.wk.toFixed(0)} ` +
+    `(«гуляет» от ${kn('walk_now')}). ${st.ch ? 'На зарядке.' : 'Не на зарядке.'} Не трогали ${st.un.toFixed(1)} ч.`;
+  const avg = st.n.slice(0, 5).reduce((a, b) => a + b) / 5;
+  $('vexp').textContent = `Настроение ${st.v.toFixed(2)} (от −1 до +1): складывается из среднего потребностей (${pct(avg)}), настроя дня (${st.day.toFixed(2)}), ` +
+    `раздражения (${st.an.toFixed(1)}) и грязи. Оранжевая метка — где он сейчас.`;
+  const pool = kind === 7 ? which : -1;
+  $('pools').innerHTML = POOLM.map((m, k) => `<span class="${k === pool ? 'on' : ''}">${k >= 4 ? 'Вечер, ' : 'День, '}${POOLS[k & 3]}: ${m.map(e => ru(e.split(' ')[0])).join(', ')}</span>`).join('') +
+    `<span>Из палитры раз в 5 минут выбирается одна эмоция, не та же, что была. Вечер начинается в ${kn('evening_h')}:00.</span>`;
+  lit('n7r', kind === 7 && (which >= 4 ? 'вечер, ' : '') + POOLS[which & 3]);
+}
+
+/* ---------- the last day ---------- */
+const WHYC = ['#2c2c33', '#bf5af2', '#ff9f0a', '#ffd60a', '#ff453a', '#5aa9ff', '#64d2ff'], POOLC = ['#30d158', '#30d158', '#8e8e93', '#55555c'];
+const whyColor = w => { const kind = w >> 5, which = w & 31; return WHYC[kind] ?? POOLC[which & 3]; }; /* debug.c hist_add: kind * 32 + which */
+function whyText(w) {
+  const kind = w >> 5, which = w & 31;
+  return kind === 0 ? 'спал' : kind === 1 ? 'редкая карта' : kind === 2 ? (BODY[which]?.[0] ?? 'тело') : kind === 3 ? 'послевкусие: ' + (AFTER[which]?.[0] ?? '') :
+    kind === 4 ? `потребность «${NEED[tune?.urges[which & 15]?.[0]] ?? ''}» ниже черты` : kind === 5 ? 'ночь, мало энергии' :
+    kind === 6 ? (SITU[which]?.[0] ?? 'чем-то занят') : `палитра: ${which >= 4 ? 'вечер, ' : ''}${POOLS[which & 3]}`;
+}
+$('legend1').innerHTML = NEED.slice(0, 5).map((n, i) => `<span><i style="background:${NEEDC[i]}"></i>${n}</span>`).join('') + '<span><i style="background:#f3f1ec"></i>Настроение</span>';
+$('legend2').innerHTML = 'Полоса — почему было такое настроение:' + [['спал', WHYC[0]], ['карта', WHYC[1]], ['тело', WHYC[2]], ['послевкусие', WHYC[3]], ['потребность', WHYC[4]],
+  ['ночь', WHYC[5]], ['занят', WHYC[6]], ['палитра хорошая', POOLC[0]], ['так себе', POOLC[2]], ['плохая', POOLC[3]]].map(([t, c]) => `<span><i style="background:${c}"></i>${t}</span>`).join('');
+function drawHist() {
+  const c = $('chart'), g = c.getContext('2d'), W = c.width, H = c.height;
+  g.clearRect(0, 0, W, H);
+  if (!hist.length) return;
+  const t0 = hist[0].t, t1 = hist[hist.length - 1].t || t0 + 1, X = t => (t - t0) / Math.max(60, t1 - t0) * (W - 20) + 10;
+  g.strokeStyle = '#25252c'; g.lineWidth = 1;
+  for (let k = 0; k <= 4; k++) { const y = 10 + k * (H - 20) / 4; g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
+  g.fillStyle = '#6b6962'; g.font = '600 18px Manrope, sans-serif';
+  for (let t = Math.ceil(t0 / 3600) * 3600; t <= t1; t += 3600) {
+    const d = new Date(t * 1000), x = X(t);
+    g.fillText(String(d.getHours()).padStart(2, '0') + ':00', x + 4, H - 8); g.fillRect(x, 0, 1, H);
+  }
+  const line = (f, col, w) => { g.strokeStyle = col; g.lineWidth = w; g.beginPath();
+    hist.forEach((h, i) => { const y = 10 + (1 - f(h)) * (H - 20); i ? g.lineTo(X(h.t), y) : g.moveTo(X(h.t), y); }); g.stroke(); };
+  NEEDC.slice(0, 5).forEach((col, i) => line(h => h.n[i], col, 2)); /* the history keeps the first five */
+  line(h => (h.v + 1) / 2, '#f3f1ec', 3);
+  $('strip').innerHTML = hist.map(h => `<div style="flex:1;background:${whyColor(h.why)}"></div>`).join('');
+  $('hinfo').textContent = `Записано ${hist.length} мин (с последней перезагрузки). Наведи на график — покажет, что было в эту минуту`;
+}
+$('chart').onmousemove = e => {
+  if (!hist.length) return;
+  const r = e.target.getBoundingClientRect(), f = (e.clientX - r.left) / r.width, h = hist[Math.min(hist.length - 1, Math.max(0, Math.round(f * (hist.length - 1))))];
+  const d = new Date(h.t * 1000), tip = $('tip');
+  tip.innerHTML = `<b>${d.toLocaleTimeString('ru-RU').slice(0, 5)} · ${ru(names[h.mood])}</b><br>${whyText(h.why)}<br>` +
+    NEED.slice(0, 5).map((n, i) => `${n}: ${pct(h.n[i])}`).join('<br>') + `<br>Настрой дня ${h.day.toFixed(2)} · настроение ${h.v.toFixed(2)}`;
+  tip.style.display = 'block'; tip.style.left = Math.min(e.clientX + 14, innerWidth - 330) + 'px'; tip.style.top = e.clientY + 14 + 'px';
+};
+$('chart').onmouseleave = () => $('tip').style.display = 'none';
+
+/* ---------- lines from the board ---------- */
+let alive = 0;
+function onLine(l) { try { lineIn(l); } catch (e) { /* a log line landed inside a status line: drop it, keep reading */ } }
+function lineIn(l) {
+  if (l.startsWith('@S ')) { st = JSON.parse(l.slice(3)); alive = Date.now(); render(); }
+  else if (l.startsWith('@N ')) { names = l.slice(3).split(','); buildMoods(); if (tune) buildTune(); }
+  else if (l.startsWith('@K ')) { const [n, v, min, max] = l.slice(3).split(' '); knobs[n] = {v: +v, min: +min, max: +max}; }
+  else if (l.startsWith('@T ')) { const first = !tune; tune = JSON.parse(l.slice(3)); if (first || !dragging) buildTune(); }
+  else if (l.startsWith('@H ')) {
+    if (l === '@H end') { hist = histBuf; drawHist(); return; }
+    const a = l.slice(3).split(' ').map(Number);
+    histBuf.push({t: a[0], mood: a[1], n: a.slice(2, 7).map(v => v / 255), day: a[7] / 100, v: a[8] / 100, sl: a[9], why: a[10]});
+  }
+}
+setInterval(() => {
+  const on = Date.now() - alive < 2500;
+  $('conn').classList.toggle('on', on);
+  $('howto').hidden = on;
+  if (!on && (usb || bt) && alive) $('moodSub').textContent = 'Брелок не отвечает: проверь, что он включён';
+}, 500);
+connectBridge();
+autoUsb();
+</script>
+</body>
+</html>
