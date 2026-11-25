@@ -1,0 +1,14 @@
+build/
+build-web/
+out/
+sim/web/pip.js
+sim/web/pip.wasm
+firmware/build/
+firmware/managed_components/
+firmware/sdkconfig
+firmware/sdkconfig.old
+backup/
+pip video/
+firmware/build-release/
+build-pub/
+print/
