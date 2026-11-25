@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://ibuzy.github.io/pip/"><img height="64" alt="Панель управления" src="docs/guide/panel-button.svg"></a>
+  <a href="https://ibuzy.github.io/pip/"><img height="50" alt="Панель управления" src="docs/guide/panel-button.svg"></a>
 </p>
 
 <p align="center">
