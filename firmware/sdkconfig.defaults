@@ -1,0 +1,102 @@
+# Waveshare ESP32-S3-Touch-AMOLED-1.75C: ESP32-S3R8 (8 MB octal PSRAM), 32 MB flash
+CONFIG_IDF_TARGET="esp32s3"
+CONFIG_ESPTOOLPY_FLASHSIZE_32MB=y
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+CONFIG_FREERTOS_HZ=1000
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+
+# LVGL: keep in sync with sim/lv_conf.h
+CONFIG_LV_COLOR_DEPTH_16=y
+CONFIG_LV_USE_CLIB_MALLOC=y
+CONFIG_LV_USE_CLIB_STRING=y
+CONFIG_LV_USE_CLIB_SPRINTF=y
+CONFIG_LV_DEF_REFR_PERIOD=16
+# LVGL's own examples and demos are not built into the firmware
+# CONFIG_LV_BUILD_EXAMPLES is not set
+# CONFIG_LV_BUILD_DEMOS is not set
+# only the widgets the UI makes (obj, label, button, arc, line, image, canvas): the rest off
+# CONFIG_LV_USE_ANIMIMG is not set
+# CONFIG_LV_USE_ARCLABEL is not set
+# CONFIG_LV_USE_BAR is not set
+# CONFIG_LV_USE_BUTTONMATRIX is not set
+# CONFIG_LV_USE_CALENDAR is not set
+# CONFIG_LV_USE_CHART is not set
+# CONFIG_LV_USE_CHECKBOX is not set
+# CONFIG_LV_USE_DROPDOWN is not set
+# CONFIG_LV_USE_IMAGEBUTTON is not set
+# CONFIG_LV_USE_KEYBOARD is not set
+# CONFIG_LV_USE_LED is not set
+# CONFIG_LV_USE_LIST is not set
+# CONFIG_LV_USE_MENU is not set
+# CONFIG_LV_USE_MSGBOX is not set
+# CONFIG_LV_USE_ROLLER is not set
+# CONFIG_LV_USE_SCALE is not set
+# CONFIG_LV_USE_SLIDER is not set
+# CONFIG_LV_USE_SPAN is not set
+# CONFIG_LV_USE_SPINBOX is not set
+# CONFIG_LV_USE_SPINNER is not set
+# CONFIG_LV_USE_SWITCH is not set
+# CONFIG_LV_USE_TABLE is not set
+# CONFIG_LV_USE_TABVIEW is not set
+# CONFIG_LV_USE_TEXTAREA is not set
+# CONFIG_LV_USE_TILEVIEW is not set
+# CONFIG_LV_USE_WIN is not set
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# Pip's face render is a large hot loop on both cores: bigger caches keep code and the frame from thrashing
+# the flash/PSRAM bus the two cores share
+CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB=y
+CONFIG_ESP32S3_DATA_CACHE_64KB=y
+CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y
+
+# The iPhone link: NimBLE, host memory in PSRAM, bonds kept in NVS, room for ANCS replies in one packet;
+# three connections: the phone, the debug page and a computer (media keys)
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_EXTERNAL=y
+CONFIG_BT_NIMBLE_NVS_PERSIST=y
+CONFIG_BT_NIMBLE_MAX_CONNECTIONS=3
+CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=185
+CONFIG_BT_NIMBLE_SVC_GAP_DEVICE_NAME="Pip"
+CONFIG_BT_NIMBLE_LOG_LEVEL_WARNING=y
+
+# malloc puts anything over 2 KB in PSRAM (the default 16 KB kept the menu's row masks in internal RAM, which BLE,
+# FreeRTOS and the display DMA need)
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=2048
+# subscriptions remembered per bonded peer: the iPhone, a computer and the debug page each keep several (HID reports,
+# battery, debug, service changed); 8 in all ran out (ble_store_config_write_cccd rc=27)
+CONFIG_BT_NIMBLE_MAX_BONDS=6
+CONFIG_BT_NIMBLE_MAX_CCCDS=40
+# the host task runs the iPhone's callbacks into the UI (ui_lock + LVGL): 4 KB overflowed on a full reconnect (ANCS+AMS+CTS)
+CONFIG_BT_NIMBLE_HOST_TASK_STACK_SIZE=8192
+
+# a dark screen is a sleeping chip: 80 MHz + automatic light sleep between wakeups (main.c holds them off while lit)
+CONFIG_PM_ENABLE=y
+CONFIG_FREERTOS_USE_TICKLESS_IDLE=y
+CONFIG_USJ_NO_AUTO_LS_ON_CONNECTION=y
+# Bluetooth lets the chip sleep between its radio events (no 32 kHz crystal: the main one stays up)
+CONFIG_BT_CTRL_MODEM_SLEEP=y
+CONFIG_BT_CTRL_MODEM_SLEEP_MODE_1=y
+CONFIG_BT_CTRL_LPCLK_SEL_MAIN_XTAL=y
+CONFIG_BT_CTRL_MAIN_XTAL_PU_DURING_LIGHT_SLEEP=y
+# keep the CPU powered in light sleep: its retention buffer costs internal RAM
+# CONFIG_PM_POWER_DOWN_CPU_IN_LIGHT_SLEEP is not set
+# draw only what the UI uses: RGB565 (and swapped) screens, canvases and images, A8 masks and glyphs; no layers
+# CONFIG_LV_DRAW_SW_SUPPORT_RGB888 is not set
+# CONFIG_LV_DRAW_SW_SUPPORT_XRGB8888 is not set
+# CONFIG_LV_DRAW_SW_SUPPORT_ARGB8888 is not set
+# CONFIG_LV_DRAW_SW_SUPPORT_ARGB8888_PREMULTIPLIED is not set
+# CONFIG_LV_DRAW_SW_SUPPORT_L8 is not set
+# CONFIG_LV_DRAW_SW_SUPPORT_AL88 is not set
+# CONFIG_LV_DRAW_SW_SUPPORT_I1 is not set
+# rows are laid out with flex; no grid layout
+# CONFIG_LV_USE_GRID is not set
+# Pip never scans (he only advertises); the central role stays: NimBLE builds its GATT client (ANCS, AMS, CTS) with it
+# CONFIG_BT_NIMBLE_ROLE_OBSERVER is not set
+CONFIG_FREERTOS_USE_TRACE_FACILITY=y
+CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y
